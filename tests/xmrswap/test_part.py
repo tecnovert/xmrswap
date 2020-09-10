@@ -17,7 +17,7 @@ import threading
 from io import StringIO
 from unittest.mock import patch
 
-from xmrswap.rpc import waitForRPC, callrpc_xmr, callrpc_xmr_na
+from xmrswap.rpc import waitForRPC, callrpc_xmr, callrpc_xmr_na, callrpc_xmr2
 from xmrswap.util import dumpj, dumpje, make_int
 from xmrswap.ecc_util import h2b
 from xmrswap.interface_xmr import XMR_COIN
@@ -440,6 +440,10 @@ class Test(unittest.TestCase):
             params = {'out': True}
             rv = self.callxmrnodewallet(ID_BOB_XMR, 'get_transfers', params)
             logging.info('[rm] Bob get_transfers %s', dumpj(rv))
+            rv = callrpc_xmr2(XMR_BASE_RPC_PORT + ID_BOB_XMR, 'get_transactions', {'txs_hashes': [b_lock_txid], 'decode_as_json': True})
+            logging.info('[rm] Bob get_transactions %s', dumpj(rv))
+            rv = callrpc_xmr2(XMR_BASE_RPC_PORT + ID_ALICE_XMR, 'get_transactions', {'txs_hashes': [b_lock_txid], 'decode_as_json': True})
+            logging.info('[rm] Alice get_transactions %s', dumpj(rv))
 
             if i >= num_tries:
                 raise ValueError('Timed out waiting for scriptless-chain lock tx to confirm.')

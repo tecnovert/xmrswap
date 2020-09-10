@@ -28,7 +28,7 @@ before_script:
   - if [ ! -d "$XMR_BINDIR" ]; then cd "$BIN_DIRS" && wget https://downloads.getmonero.org/cli/monero-linux-x64-${XMR_VERSION}.tar.bz2 && tar xvf monero-linux-x64-${XMR_VERSION}.tar.bz2; fi
 script:
   - cd $TRAVIS_BUILD_DIR
-  - export DATADIRS="${TEST_DIR}"
+  - export TEST_DATADIRS="${TEST_DIR}"
   - export PARTICL_BINDIR="${PARTICL_BINDIR}"
   - export BITCOIN_BINDIR="${BITCOIN_BINDIR}"
   - export XMR_BINDIR="${XMR_BINDIR}"
