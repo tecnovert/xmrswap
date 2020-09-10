@@ -6,6 +6,7 @@
 # file LICENSE.txt or http://www.opensource.org/licenses/mit-license.php.
 
 import os
+import signal
 import logging
 import subprocess
 
@@ -166,3 +167,51 @@ def checkSoftForks(ro):
     else:
         assert(ro['softforks']['csv']['active'])
         assert(ro['softforks']['segwit']['active'])
+
+
+def stopNodes(self):
+    self.stop_nodes = True
+    if self.update_thread is not None:
+        try:
+            self.update_thread.join()
+        except Exception:
+            logging.info('Failed to join update_thread')
+    self.update_thread = None
+
+    for d in self.xmr_daemons:
+        logging.info('Interrupting %d', d.pid)
+        try:
+            d.send_signal(signal.SIGINT)
+        except Exception as e:
+            logging.info('Interrupting %d, error %s', d.pid, str(e))
+    for d in self.xmr_daemons:
+        try:
+            d.wait(timeout=20)
+            if d.stdout:
+                d.stdout.close()
+            if d.stderr:
+                d.stderr.close()
+            if d.stdin:
+                d.stdin.close()
+        except Exception as e:
+            logging.info('Closing %d, error %s', d.pid, str(e))
+    self.xmr_daemons = []
+
+    for d in self.daemons:
+        logging.info('Interrupting %d', d.pid)
+        try:
+            d.send_signal(signal.SIGINT)
+        except Exception as e:
+            logging.info('Interrupting %d, error %s', d.pid, str(e))
+    for d in self.daemons:
+        try:
+            d.wait(timeout=20)
+            if d.stdout:
+                d.stdout.close()
+            if d.stderr:
+                d.stderr.close()
+            if d.stdin:
+                d.stdin.close()
+        except Exception as e:
+            logging.info('Closing %d, error %s', d.pid, str(e))
+    self.daemons = []

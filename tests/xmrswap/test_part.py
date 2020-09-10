@@ -9,7 +9,6 @@ import os
 import sys
 import time
 import shutil
-import signal
 import logging
 import unittest
 import threading
@@ -37,7 +36,7 @@ from tests.xmrswap.common import (
     XMR_BASE_RPC_PORT, XMR_BASE_WALLET_RPC_PORT,
     prepareXmrDataDir, prepareDataDir,
     startXmrDaemon, startXmrWalletRPC,
-    startDaemon, callnoderpc, make_rpc_func
+    startDaemon, callnoderpc, make_rpc_func, stopNodes
 )
 
 TEST_DIR = os.path.join(TEST_DATADIRS, 'part')
@@ -138,7 +137,7 @@ class Test(unittest.TestCase):
     def tearDownClass(cls):
         logging.info('Finalising')
 
-        cls.stopNodes(cls)
+        stopNodes(cls)
 
         cls.stream_fp.close()
 
@@ -168,39 +167,6 @@ class Test(unittest.TestCase):
 
     def callxmrnodewallet(self, node_id, method, params=None):
         return callrpc_xmr(XMR_BASE_WALLET_RPC_PORT + node_id, self.xmr_wallet_auth[node_id], method, params)
-
-    def stopNodes(self):
-        self.stop_nodes = True
-        if self.update_thread is not None:
-            try:
-                self.update_thread.join()
-            except Exception:
-                logging.info('Failed to join update_thread')
-        self.update_thread = None
-
-        for d in self.xmr_daemons:
-            logging.info('Interrupting %d', d.pid)
-            d.send_signal(signal.SIGINT)
-            d.wait(timeout=10)
-            if d.stdout:
-                d.stdout.close()
-            if d.stderr:
-                d.stderr.close()
-            if d.stdin:
-                d.stdin.close()
-        self.xmr_daemons = []
-
-        for d in self.daemons:
-            logging.info('Interrupting %d', d.pid)
-            d.send_signal(signal.SIGINT)
-            d.wait(timeout=10)
-            if d.stdout:
-                d.stdout.close()
-            if d.stderr:
-                d.stderr.close()
-            if d.stdin:
-                d.stdin.close()
-        self.daemons = []
 
     def initialiseTestState(self):
         # Called from a classmethod, seems to poison all method calls
