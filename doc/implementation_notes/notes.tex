@@ -1,0 +1,349 @@
+
+\documentclass[a4paper]{article}
+\usepackage[top=2cm, bottom=2cm, left=2.5cm, right=2.5cm]{geometry}
+
+
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{amsthm}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{biblatex}
+\usepackage{listings}
+
+\bibliography{notes}
+
+\title{Bitcoin–Monero Cross-chain Atomic Swap Implementation notes\\
+\normalsize v0.2 DRAFT}
+\author{%
+tecnovert\footnote{\texttt{tecnovert@tecnovert.net}}
+}
+\date{2020-09-10}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+Notes on implementing the protocol described by h4sh3d in Bitcoin–Monero Cross-chain Atomic Swap\cite{h4sh3d:1}
+
+
+\section{Discrete Logarithm Equality Across Groups}
+A Discrete Logarithm Equality Across Groups (DLEAG) proof can prove a discrete logarithm is equal for two points on different curves.\\
+We use the scheme from MRL-0010\cite{MRL:10}, slightly modified to use a borromean\cite{borromean} ring stack for a reduced proof size.
+\\
+The curves considered are secp256k1\cite{CerRes10} used by the Bitcoin\cite{nakamoto2008bitcoin} cryptocurrency and forks and ed25519\cite{ches-2011-24091} used by Monero\cite{van2013cryptonote}.\\
+As the order of the generator point of the ed25519 curve $l$ is less than that of curve secp256k1 $o$ the shared secret must be less than $ l $.\\
+To represent $l-1$ in base2, we must prove 252 bits.\\
+
+\subsection{Definitions}
+\begin{itemize}
+    \item $G$   - The base point of curve secp256k1
+    \item $\hat{G}$  - An alternate base point of curve secp256k1 in the same order as $G$, chosen as $G$ hashed to a point, proving it's discrete logarithm is unknown.
+    \item $B$   - The base point of curve ed25519
+    \item $\hat{B}$  - An alternate base point of curve ed25519 in the same order as $B$, chosen as $B$ hashed to a point, proving it's discrete logarithm is unknown.
+    \item $l$   - Order of $B$ and $\hat{B}$
+    \item $o$   - Order of $G$ and $\hat{G}$
+    \item $n$   - Number of bits proved
+    \item HashG() - A hash function which outputs an integer $\in \mathbb{Z}_{o}$
+    \item HashB() - A hash function which outputs an integer $\in \mathbb{Z}_{l}$
+\end{itemize}
+
+\subsection{DLEAGProve($x$)}
+\begin{enumerate}
+    \item Split $x$ into an array of bits $b$ so $\displaystyle\sum_{i=0}^{n-1}b_{i} = x$
+    \item For each $i \in [0, n-2]$ generate random blinding factors:\\
+          $r_{i} \in \mathbb{Z}_{o}$ and $s_{i} \in \mathbb{Z}_{l}$
+    \item Set the last blinding factors to:\\
+          $r_{n-1} = (2^{n-1})^{-1} (-\displaystyle\sum_{i=0}^{n-2} r_{i}2^{i}) \in \mathbb{Z}_{o}$\\
+          and\\
+          $s_{n-1} = (2^{n-1})^{-1} (-\displaystyle\sum_{i=0}^{n-2} s_{i}2^{i})\in \mathbb{Z}_{l}$\\
+          Causing each set of weighted blinding factors to sum to $0$\\
+          $\sum_{i=0}^{n-1} r_{i}2^{i} == 0$ and $\sum_{i=0}^{n-1} s_{i}2^{i} == 0$
+    \item For each $i \in [0, n-1]$ compute two commitments:
+        $C^{G}_{i} = b_{i}G + r_{i}\hat{G} \in \mathbb{Z}_{o}$\\
+        $C^{B}_{i} = b_{i}B + s_{i}\hat{B} \in \mathbb{Z}_{l}$\\
+        so the weighted commitment sums equal $xG$ and $xB$\\
+        $\sum_{i=0}^{n-1} C^{G}_{i}2^{i} = xG$\\
+        $\sum_{i=0}^{n-1} C^{B}_{i}2^{i} = xB$
+    \item Construct the ring stack, for each $i \in [0, n-1]$:
+        \begin{enumerate}
+            \item Choose random $j_{i} \in \mathbb{Z}_{o} $ and $ k_{i} \in \mathbb{Z}_{l}$
+            \item Set $J_{i,b_{i}} = j_{i}\hat{G}$ and $K_{i,b_{i}} = j_{i}\hat{B}$
+            \item For each $z \in [b_{i}+1, 2]$:
+                \begin{enumerate}
+                    \item $e_{G} = $HashG($C^{G}_{i}||C^{B}_{i}||J||K||i||z$)\\
+                          $e_{B} = $HashB($C^{G}_{i}||C^{B}_{i}||J||K||i||z$)
+                    \item Choose random $a^{G}_{i,z} \in \mathbb{Z}_{o} $ and $ a^{B}_{i,z} \in \mathbb{Z}_{l}$
+                    \item $J_{i,z} = a^{G}_{i,z}\hat{G} - e_{G}(C^{G}_{i} - zG)$\\
+                          $K_{i,z} = a^{B}_{i,z}\hat{B} - e_{B}(C^{B}_{i} - zB)$
+                \end{enumerate}
+
+        \end{enumerate}
+    \item $e^{G}_{0} = HashG(J_{0,2}||...||J_{i-1,2})$ and\\
+        $e^{B}_{0} = HashG(K_{0,2}||...||K_{i-1,2})$
+    \item Sign the ring stack, For each $i \in [0, n-1]$:
+        \begin{enumerate}
+            \item $e_{G} = $HashG($C^{G}_{i}||C^{B}_{i}||e^{G}_{0}||e^{B}_{0}||i||0$)
+            \item $e_{B} = $HashB($C^{G}_{i}||C^{B}_{i}||e^{G}_{0}||e^{B}_{0}||i||0$)
+            \item For each $z \in [0, b_{i}]$:
+                \begin{enumerate}
+                    \item Choose random $a^{G}_{i,z} \in \mathbb{Z}_{o} $ and $ a^{B}_{i,z} \in \mathbb{Z}_{l}$
+                    \item $J_{i,z} = a^{G}_{i,z}\hat{G} - e_{G}(C^{G}_{i} - zG)$\\
+                          $K_{i,z} = a^{B}_{i,z}\hat{B} - e_{B}(C^{B}_{i} - zB)$
+                    \item $e_{G} = $HashG($C^{G}_{i}||C^{B}_{i}||J||K||i||z+1$)\\
+                          $e_{B} = $HashB($C^{G}_{i}||C^{B}_{i}||J||K||i||z+1$)
+                \end{enumerate}
+            \item Close the loop:\\
+                $a^{G}_{i,b_{i}} = j_{i} + e_{G}r_{i}$\\
+                $a^{B}_{i,b_{i}} = k_{i} + e_{B}s_{i}$
+        \end{enumerate}
+    \item Return the proof $(xG, xB, \{C^{G}_{i}\}, \{C^{B}_{i}\}, e^{G}_{0}, e^{B}_{0}, \{a^{G}_{0, i}\}, \{a^{G}_{1, i}\}, \{a^{B}_{0, i}\}, \{a^{B}_{1, i}\})$\\
+        Proof length is $33+32+32+32+(33+32+(32)4)n == 129+193n$ bytes.
+\end{enumerate}
+
+
+\subsection{DLEAGVerify(proof)}
+$(xG, xB, \{C^{G}_{i}\}, \{C^{B}_{i}\}, e^{G}_{0}, e^{B}_{0}, \{a^{G}_{0, i}\}, \{a^{G}_{1, i}\}, \{a^{B}_{0, i}\}, \{a^{B}_{1, i}\}) = $proof
+\begin{enumerate}
+    \item Verify the weighted commitment sums equal $xG$ and $xB$\\
+        $\sum_{i=0}^{n-1} C^{G}_{i}2^{i} = xG$\\
+        $\sum_{i=0}^{n-1} C^{B}_{i}2^{i} = xB$
+    \item Verify the ring stack, for each $i \in [0, n-1]$:
+        \begin{enumerate}
+            \item $J_{i,z} = a^{G}_{i,z}\hat{G} - e_{G}(C^{G}_{i} - zG)$\\
+                  $K_{i,z} = a^{B}_{i,z}\hat{B} - e_{B}(C^{B}_{i} - zB)$
+            \item $e_{G} = $HashG($C^{G}_{i}||C^{B}_{i}||J||K||i||z+1$)\\
+                  $e_{B} = $HashB($C^{G}_{i}||C^{B}_{i}||J||K||i||z+1$)
+        \end{enumerate}
+    \item $e^{'G}_{0} = HashG(J_{0,2}||...||J_{i-1,2})$ and\\
+        $e^{'B}_{0} = HashG(K_{0,2}||...||K_{i-1,2})$
+    \item return 1 if $e^{'G}_{0} == e^{G}_{0}$ and $e^{'B}_{0} == e^{B}_{0}$
+\end{enumerate}
+
+
+\section{Non-Interactive Zero Knowledge proof of Discrete Logarithm Equality}
+The One-Time VES scheme requires a NIZK DLEQ from \cite{dleq-proof}\\
+\\
+Given two generator points and two points on the same curve a DLEQ proves the discrete logarithm of the two points is equal.
+
+\subsection{DLEQProve}
+Take points $B_{1}, B_{2}$ on the same curve and of the same group order and a scalar $x \in \mathbb{Z}_{o}$ where $o$ is the group order.\\
+Hash is a function returning a number $\in \mathbb{Z}_{o}$\\
+\begin{enumerate}
+    \item Calculate $P_{1} = xB_{1}$ and $P_{2} = xB_{2}$
+    \item Generate a random scalar $k \in \mathbb{Z}_{o}$
+    \item Calculate $K_{1} = kB_{1}$ and $K2 = kB_{2}$
+    \item Set $c = Hash(P_{1} || P_{2} || K_{1} || K2)$
+    \item Set $r = k - cx$
+    \item The proof is the tuple $(K_{1}, K_{2}, r)$
+\end{enumerate}
+
+\subsection{DLEQVerify}
+Take points $P_{1}, P_{2}$ and the proof tuple $(K_{1}, K_{2}, r)$ as inputs.
+\begin{enumerate}
+    \item Set $c = Hash(P_{1} || P_{2} || K_{1} || K_{2}) $
+    \item Calculate $R_{1} = rB_{1}$ and $R_{2} = rB_{2}$
+    \item Calculate $C_{1} = cP_{1}$ and $C_{2} = cP_{2}$
+    \item Output 1 if $K_{1} == R_{1} + C_{1}$ and $K2 == R_{2} + C_{2}$ else 0
+\end{enumerate}
+
+
+
+\section{One-Time Verifiably Encrypted Signatures}
+Also known as Adaptor Signatures.\\
+A One-Time VES is a signature made invalid by mixing it with the public key of an encrypting key pair, a valid signature can be decrypted with knowledge of the private encrypting key and the private encrypting key can be recovered with knowledge of both the encrypted and plaintext signatures.
+We use a VES constructed to function with ECDSA signatures as described by Fournier et al. in \cite{oneTimeVES}\\
+
+\subsection{EncSign($p_{S}, P_{E}, m$)}
+On input of a secret signing key $p_{S}$, a public encryption key $P_{E}$ , and a message $m$, output a ciphertext $\hat{\sigma}$ which is an encrypted signature of $m$ by $p_{S}$.
+\begin{enumerate}
+    \item Generate a random scalar $r \in \mathbb{Z}_{o}$
+    \item Calculate $R_{1} = rG$ and $ R_{2} = rP_{E}$
+    \item $\pi = $ DLEQProve($G$, $P_{E}$, $r$)
+    \item Set $R_{2x}$ to the $x$ coord of $R_{2} \bmod o$
+    \item Calculate $\hat{s} = r^{-1}(Hash(m) + R_{2x}p_{S})$
+    \item Return the tuple $(R_{1}, R_{2}, \hat{s}, \pi)$ as $\hat{\sigma}$
+\end{enumerate}
+
+\subsection{EncVrfy($P_{S}, P_{E},  m, \hat{\sigma}$)}
+On input of a public signing key $P_{S}$, a public encryption key $P_{E}$ , a message $m$ and a ciphertext $\hat{\sigma}$ output
+1 if $\hat{\sigma}$ is a valid encryption of a signature on $m$ for $P_{S}$ under $P_{E}$.
+\begin{enumerate}
+    \item Set $(R_{1}, R_{2}, \hat{s}, \pi) = \hat{\sigma}$
+    \item Fail if DLEQVerify($R_{1}, R_{2}, \pi$) != 1
+    \item Set $R_{2x} $ to the $x$ coord of $R_{2} \bmod o$
+    \item Output 1 if $R_{1} = (Hash(m)G * R_{2x}P_{S})\hat{s}^{-1}$ else 0
+\end{enumerate}
+
+\subsection{DecSig($p_{E}, \hat{\sigma}$)}
+Decrypt the signature with the private encryption key $p_{E}$.
+\begin{enumerate}
+    \item Set $(R_{1}, R_{2}, \hat{s}, \pi) = \hat{\sigma}$
+    \item Calculate $s = \hat{s}p_{E}^{-1}$
+    \item Set $R_{2x}$ to the $x$ coord of $R_{2} \bmod o$
+    \item Return the tuple ($R_{2x}, s$) as $\sigma$
+\end{enumerate}
+
+\subsection{RecEncKey($P_{E}, \hat{\sigma}$, $\sigma$)}
+Recover the private encryption key $p_{e}$ from the plaintext and encrypted signatures.
+\begin{enumerate}
+    \item Set $(R_{1}, R_{2}, \hat{s}, \pi) = \hat{\sigma}$
+    \item Set $(R_{2x}, s) = \sigma$
+    \item $p = s^{-1}\hat{s}$
+    \item Return p if $pG == P_{E}$ else $-p$
+\end{enumerate}
+
+
+\section{Atomic Swap Protocol}
+
+\subsection{Basic Idea}
+Two parties want to exchange coins between blockchains in a such a way
+that neither can be cheated.\\
+\\
+The swap leader exchanges coin from the script-enabled blockchain and sends the first transaction.\\
+The leader wants to exchange an amount of coinA for an amount of coinB.\\
+The follower wants to exchange an amount of coinB for an amount of coinA.\\
+
+
+\begin{enumerate}
+    \item Leader and follower exchange details necessary for the swap.
+    \item Once they agree on the details the leader publishes a lock transaction
+which locks up the amount of coinA being exchanged by sending it to an
+output that can only be spent if both sides cooperate until the time
+agreed for the exchange expires when the leader can reclaim it.
+    \item The follower waits for the coinA lock transaction to be confirmed in
+it's blockchain.  If he's satisfied the transaction was formed correctly
+he publishes a transaction locking up the amount of coinB being
+exchanged.  The coinB lock tx can only be spent with knowledge of a
+private key from both the leader and follower.
+    \item The leader waits for the coinB lock transaction to be confirmed in
+it's blockchain. If he's satisfied the transaction was formed correctly
+he reveals information to the follower which allows him to spend from
+the coinA lock transaction.
+    \item By spending from the coinA lock transaction the follower reveals
+information to the leader allowing him to spend from the coinB lock
+transaction.
+    \item The leader spends from the coinB lock transaction and the exchange is
+completed successfully.
+\end{enumerate}
+
+\noindent Leader:\\
+ - Loses: coinA locked value, 1x coinA tx fees and 1x coinB tx fees.\\
+ - Gains: coinB locked value.\\
+Follower:\\
+ - Loses: coinB locked value, 1x coinB tx fees and 1x coinA tx fees.\\
+ - Gains: coinA locked value.\\
+\\
+
+\subsection{Details}
+
+Step 2:\\
+In addition to the coinA lock tx the parties craft a transaction
+spending from the coinA lock tx refund path and spendable either by
+both parties cooperating or by the follower after a second locktime has
+expired.  Before the leader publishes the coinA lock tx he will know the
+information to spend the coinA refund tx immediately after it's published
+however spending from the coinA refund tx cooperative path reveals
+information to the follower allowing him to from the coinB lock
+transaction.\\
+The refund path could be built into the coinA lock tx, but would
+increase the size of the coinA lock tx significantly and should seldom
+be required.\\
+\\
+Step 3:\\
+The coinB lock tx outputs to a key which is the sum of a key from the
+leader and a key from the follower.\\
+The One-Time Verifiably Encrypted Signatures are crafted with this key
+as the encryption key, and the information distributed so the
+follower reveals his key to the leader by spending from the coinA lock
+tx and the leader reveals his key to the follower by spending from the
+coinA lock refund tx.\\
+\\
+\\
+
+If something goes wrong and the leader or follower stop responding:\\
+\\
+After step 2, before step 3:\\
+If the follower drops out:\\
+The leader can retrieve his coin from the coinA lock tx by waiting for
+the exchange time to expire and publishing the coinA refund tx.  Then
+spending from the coinA refund tx cooperative path.  The follower has
+not yet locked any coinB.\\
+Leader loses 2x coinA tx fees, follower loses nothing.\\
+\\
+If the leader drops out:\\
+The follower can wait for the first locktime to expire, then publish the
+coinA refund tx.  Once the coinA refund tx locktime expires the follower
+can spend from it with only his signature, thus claiming the amount of
+coinA while still retaining the coinB.\\
+Leader:\\
+ - Loses: 1x coinA fees and locked coinA value.\\
+Follower:\\
+ - Loses: 1x coinA fees, 1x coinB fees.\\
+ - Gains: Locked coinA value\\
+\\
+\\
+After step 3:\\
+If the follower drops out:\\
+As at step 2, by spending from the coinA refund tx cooperative path the
+leader reveals information allowing the follower to spend from the coinB
+lock tx.\\
+Leader:\\
+ - Loses: 2x coinA tx fees.\\
+Follower:\\
+ - Loses: 2x coinB tx fees.\\
+\\
+If the leader drops out:\\
+As at step 2 except the follower has published the coinB lock tx.\\
+Neither party can spend the coinB lock tx without assistance from the
+other.\\
+Leader:\\
+ - Loses: 1x coinA fees and locked coinA value.\\
+Follower:\\
+ - Loses: 1x coinA fees, 1x coinB fees and locked coinB value.\\
+ - Gains: locked coinA value.\\
+
+
+
+\subsubsection{Transaction scripts}
+
+\begin{lstlisting}[language=C++, caption={\noindent Lock tx output script}]
+OP_IF
+    OP_SHA256 {secret_hash} OP_EQUALVERIFY
+    OP_2 {pk_leader} {pk_follower} OP_2 OP_CHECKMULTISIG
+OP_ELSE
+    {lock_for_1} OP_CHECKSEQUENCEVERIFY OP_DROP
+    OP_2 {pk_leader_refund} {pk_follower_refund} OP_2 OP_CHECKMULTISIG
+OP_ENDIF
+\end{lstlisting}
+
+\begin{lstlisting}[language=C++, caption={\noindent Lock refund tx output script}]
+OP_IF
+    OP_2 {pk_leader_refund} {pk_follower_refund} OP_2 OP_CHECKMULTISIG
+OP_ELSE
+    {lock_for_2} OP_CHECKSEQUENCEVERIFY OP_DROP
+    {pk_follower} OP_CHECKSIG
+OP_ENDIF
+\end{lstlisting}
+
+\subsubsection{Checking the secret length}
+Checking the secret length as required in Decred style atomic swaps
+\cite{advisory1} is not strictly necessary as the secret value and hash
+will only be used on one blockchain, it may help to prevent unexpectedly
+large secret values from being used to throw off the transaction fee.
+
+\section{Future Enhancements}
+\begin{itemize}
+    \item coinA lock and refund scripts can be joined into one more efficiently on
+          chains where the taproot bip-0341\cite{bip-0341} improvement is active.
+    \item DLEAG proof could prove multiple bits per ring layer, reducing the proof size.
+    \item Improve encoding of VES data to reduce size.
+\end{itemize}
+
+\clearpage
+
+\printbibliography
+
+\end{document}

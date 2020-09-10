@@ -1,0 +1,10 @@
+old/
+*.pyc
+__pycache__
+/dist/
+/build/
+/*.egg-info
+/*.egg
+/*.eggs
+*.sage.py
+.ipynb_checkpoints

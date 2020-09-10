@@ -1,0 +1,9 @@
+# Ignore everything
+*
+
+# Except
+!.gitignore
+!Makefile
+!notes.tex
+!notes.pdf
+!notes.bib
