@@ -77,13 +77,17 @@ class XMRInterface(CoinInterface):
 
         return rv['tx_hash']
 
-    def findTxB(self, kbv, Kbs, cb_swap_value, cb_block_confirmed):
+    def findTxB(self, kbv, Kbs, cb_swap_value, cb_block_confirmed, restore_height):
         Kbv_enc = self.encodePubkey(self.pubkey(kbv))
         address_b58 = xmr_util.encode_address(Kbv_enc, self.encodePubkey(Kbs))
 
-        rv = self.rpc_wallet_cb('close_wallet')
+        try:
+            self.rpc_wallet_cb('close_wallet')
+        except Exception as e:
+            logging.warning('close_wallet failed %s', str(e))
 
         params = {
+            'restore_height': restore_height,
             'filename': address_b58,
             'address': address_b58,
             'viewkey': b2h(intToBytes32_le(kbv)),
@@ -102,36 +106,41 @@ class XMRInterface(CoinInterface):
             logging.info('findTxB XMR current_height %d\nAddress: %s', current_height, address_b58)
         except Exception as e:
             logging.info('rpc_cb failed %s', str(e))
+            current_height = None  # If the transfer is available it will be deep enough
 
-
-        # TODO: Why is rescan necessary?
-        self.rpc_wallet_cb('rescan_blockchain')
-
-        params = {'transfer_type': 'available'}
-        rv = self.rpc_wallet_cb('incoming_transfers', params)
-        if 'transfers' in rv:
-            for transfer in rv['transfers']:
-                if transfer['amount'] == cb_swap_value and current_height - transfer['block_height'] > cb_block_confirmed:
-                    return True
+        # For a while after opening the wallet rpc cmds return empty data
+        for i in range(5):
+            params = {'transfer_type': 'available'}
+            rv = self.rpc_wallet_cb('incoming_transfers', params)
+            if 'transfers' in rv:
+                for transfer in rv['transfers']:
+                    if transfer['amount'] == cb_swap_value \
+                       and (current_height is None or current_height - transfer['block_height'] > cb_block_confirmed):
+                        return True
+            time.sleep(1 + i)
 
         return False
 
-    def waitForLockTxB(self, kbv, Kbs, cb_swap_value, cb_block_confirmed):
+    def waitForLockTxB(self, kbv, Kbs, cb_swap_value, cb_block_confirmed, restore_height):
 
         Kbv_enc = self.encodePubkey(self.pubkey(kbv))
         address_b58 = xmr_util.encode_address(Kbv_enc, self.encodePubkey(Kbs))
 
-        rv = self.rpc_wallet_cb('close_wallet')
-        print('close_wallet', rv)
+        try:
+            self.rpc_wallet_cb('close_wallet')
+        except Exception as e:
+            logging.warning('close_wallet failed %s', str(e))
 
         params = {
             'filename': address_b58,
             'address': address_b58,
             'viewkey': b2h(intToBytes32_le(kbv)),
+            'restore_height': restore_height,
         }
         self.rpc_wallet_cb('generate_from_keys', params)
 
         self.rpc_wallet_cb('open_wallet', {'filename': address_b58})
+        # For a while after opening the wallet rpc cmds return empty data
 
         num_tries = 40
         for i in range(num_tries + 1):
@@ -139,17 +148,21 @@ class XMRInterface(CoinInterface):
                 current_height = self.rpc_cb('get_block_count')['count']
                 print('current_height', current_height)
             except Exception as e:
-                logging.info('rpc_cb failed %s', str(e))
+                logging.warning('rpc_cb failed %s', str(e))
+                current_height = None  # If the transfer is available it will be deep enough
+
+            # TODO: Make accepting current_height == None a user selectable option
+            #       Or look for all transfers and check height
+
             params = {'transfer_type': 'available'}
             rv = self.rpc_wallet_cb('incoming_transfers', params)
             print('rv', rv)
+
             if 'transfers' in rv:
                 for transfer in rv['transfers']:
-                    if transfer['amount'] == cb_swap_value and current_height - transfer['block_height'] > cb_block_confirmed:
+                    if transfer['amount'] == cb_swap_value \
+                       and (current_height is None or current_height - transfer['block_height'] > cb_block_confirmed):
                         return True
-
-            # TODO: Why is rescan necessary?
-            self.rpc_wallet_cb('rescan_blockchain')
 
             # TODO: Is it necessary to check the address?
 
@@ -169,13 +182,16 @@ class XMRInterface(CoinInterface):
 
         return False
 
-    def spendBLockTx(self, address_to, kbv, kbs, cb_swap_value, b_fee_rate):
+    def spendBLockTx(self, address_to, kbv, kbs, cb_swap_value, b_fee_rate, restore_height):
 
         Kbv_enc = self.encodePubkey(self.pubkey(kbv))
         Kbs_enc = self.encodePubkey(self.pubkey(kbs))
         address_b58 = xmr_util.encode_address(Kbv_enc, Kbs_enc)
 
-        self.rpc_wallet_cb('close_wallet')
+        try:
+            self.rpc_wallet_cb('close_wallet')
+        except Exception as e:
+            logging.warning('close_wallet failed %s', str(e))
 
         wallet_filename = address_b58 + '_spend'
 
@@ -184,15 +200,24 @@ class XMRInterface(CoinInterface):
             'address': address_b58,
             'viewkey': b2h(intToBytes32_le(kbv)),
             'spendkey': b2h(intToBytes32_le(kbs)),
+            'restore_height': restore_height,
         }
-        self.rpc_wallet_cb('generate_from_keys', params)
-        self.rpc_wallet_cb('open_wallet', {'filename': wallet_filename})
 
-        self.rpc_wallet_cb('rescan_blockchain')
+        try:
+            self.rpc_wallet_cb('open_wallet', {'filename': wallet_filename})
+        except Exception as e:
+            rv = self.rpc_wallet_cb('generate_from_keys', params)
+            logging.info('generate_from_keys %s', dumpj(rv))
+            self.rpc_wallet_cb('open_wallet', {'filename': wallet_filename})
 
-        # Debug
-        rv = self.rpc_wallet_cb('get_balance')
-        print('get_balance', rv)
+        # For a while after opening the wallet rpc cmds return empty data
+        for i in range(10):
+            rv = self.rpc_wallet_cb('get_balance')
+            print('get_balance', rv)
+            if rv['balance'] >= cb_swap_value:
+                break
+
+            time.sleep(1 + i)
 
         # TODO: need a subfee from output option
         b_fee = b_fee_rate * 10  # Guess
@@ -206,7 +231,6 @@ class XMRInterface(CoinInterface):
                 break
             except Exception as e:
                 print('str(e)', str(e))
-                pass
             if i >= num_tries:
                 raise ValueError('transfer failed.')
             b_fee += b_fee_rate

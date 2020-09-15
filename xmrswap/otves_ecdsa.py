@@ -15,7 +15,7 @@ from .ecc_util import (
     ep, G,
     pointToCPK, CPKToPoint,
     getSecretInt,
-    i2b, b2i, i2h)
+    i2b, b2i)
 from .contrib.ellipticcurve import inverse_mod
 
 SECP256K1_ORDER_HALF = ep.o // 2
@@ -148,7 +148,6 @@ def DecSig(skE, ct):
     R2 = CPKToPoint(ct[o: o + 33])
     o += 33
     s = b2i(ct[o: o + 32])
-    print('s', i2h(s))
 
     # R2 == G * (b * r)
     # removing b

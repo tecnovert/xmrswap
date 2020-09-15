@@ -141,8 +141,6 @@ def callrpc_xmr(rpc_port, auth, method, params=[], wallet=None, path='json_rpc')
         headers = {
             'content-type': 'application/json'
         }
-        print('url', url)
-        print('request_body', json.dumps(request_body))
         p = requests.post(url, data=json.dumps(request_body), auth=requests.auth.HTTPDigestAuth(auth[0], auth[1]), headers=headers)
         r = json.loads(p.text)
     except Exception as ex:
