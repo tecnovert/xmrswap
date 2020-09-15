@@ -55,6 +55,7 @@ from xmrswap.util import (
 from xmrswap.ecc_util import (
     b2h, h2b, i2h
 )
+from xmrswap.contrib.test_framework import segwit_addr
 
 
 def printSwapInfo(swapinfo):
@@ -87,7 +88,20 @@ def initialiseSwap(swapinfo, data):
     a_feerate = make_int(data['a_feerate'], ai.exp())
     b_feerate = make_int(data['b_feerate'], bi.exp())
 
-    a_pkhash_f = h2b(data['a_pkhash_f'])
+    if 'a_addr_f' in data:
+        # Decode p2wpkh address
+        addr = data['a_addr_f']
+        addr_split = addr.split('1')
+        if len(addr_split) != 2:
+            raise ValueError('Invalid bech32 address')
+
+        if addr_split[0] not in ['bc', 'pw', 'bcrt', 'rtpw']:
+            raise ValueError('Unknown bech32 hrp')
+
+        ignr, pkh = segwit_addr.decode(addr_split[0], addr)
+        a_pkhash_f = bytes(pkh)
+    else:
+        a_pkhash_f = h2b(data['a_pkhash_f'])
 
     lock1 = data['lock1'] if 'lock1' in data else 100
     lock2 = data['lock2'] if 'lock2' in data else 101

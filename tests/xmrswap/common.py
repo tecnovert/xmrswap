@@ -6,12 +6,19 @@
 # file LICENSE.txt or http://www.opensource.org/licenses/mit-license.php.
 
 import os
+import sys
 import signal
 import logging
 import subprocess
 
+from io import StringIO
+from unittest.mock import patch
+
 from xmrswap.rpc import callrpc
+from xmrswap.util import dumpje
 from xmrswap.contrib.rpcauth import generate_salt, password_to_hmac
+
+import bin.xmrswaptool as swapTool
 
 TEST_DATADIRS = os.path.expanduser(os.getenv('TEST_DATADIRS', '/tmp/xmrswap'))
 
@@ -167,6 +174,28 @@ def checkSoftForks(ro):
     else:
         assert(ro['softforks']['csv']['active'])
         assert(ro['softforks']['segwit']['active'])
+
+
+def callSwapTool(swap_file, method=None, json_params=None, str_param=None):
+    testargs = ['xmrswaptool.py', swap_file]
+    if method:
+        testargs.append(method)
+    if json_params is not None:
+        testargs.append('"' + dumpje(json_params) + '"')
+
+    if str_param is not None:
+        testargs.append(str_param)
+
+    print('testargs', ' '.join(testargs))
+    with patch.object(sys, 'argv', testargs):
+        with patch('sys.stdout', new=StringIO()) as fake_out:
+            try:
+                swapTool.main()
+            except Exception as e:
+                logging.info('swapTool failed: stdout: %s', fake_out.getvalue())
+                raise e
+
+            return fake_out.getvalue()
 
 
 def stopNodes(self):

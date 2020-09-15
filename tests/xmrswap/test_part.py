@@ -6,25 +6,19 @@
 # file LICENSE.txt or http://www.opensource.org/licenses/mit-license.php.
 
 import os
-import sys
 import time
 import shutil
 import logging
 import unittest
 import threading
 
-from io import StringIO
-from unittest.mock import patch
-
 from xmrswap.rpc import waitForRPC, callrpc_xmr, callrpc_xmr_na, callrpc_xmr2
-from xmrswap.util import dumpj, dumpje, make_int
+from xmrswap.util import dumpj, make_int
 from xmrswap.ecc_util import h2b
 from xmrswap.interface_xmr import XMR_COIN
 
 from xmrswap.contrib.test_framework import segwit_addr
 from xmrswap.contrib.test_framework.wallet_util import bytes_to_wif
-
-import bin.xmrswaptool as swapTool
 
 from tests.xmrswap.common import (
     TEST_DATADIRS,
@@ -36,7 +30,7 @@ from tests.xmrswap.common import (
     XMR_BASE_RPC_PORT, XMR_BASE_WALLET_RPC_PORT,
     prepareXmrDataDir, prepareDataDir,
     startXmrDaemon, startXmrWalletRPC,
-    startDaemon, callnoderpc, make_rpc_func, stopNodes
+    startDaemon, callnoderpc, make_rpc_func, stopNodes, callSwapTool
 )
 
 TEST_DIR = os.path.join(TEST_DATADIRS, 'part')
@@ -143,28 +137,6 @@ class Test(unittest.TestCase):
 
         super(Test, cls).tearDownClass()
 
-    def callSwapTool(self, swap_id, method=None, json_params=None, str_param=None):
-        swap_file = os.path.join(TEST_DIR, swap_id) + '.json'
-        testargs = ['xmrswaptool.py', swap_file]
-        if method:
-            testargs.append(method)
-        if json_params is not None:
-            testargs.append('"' + dumpje(json_params) + '"')
-
-        if str_param is not None:
-            testargs.append(str_param)
-
-        print('testargs', ' '.join(testargs))
-        with patch.object(sys, 'argv', testargs):
-            with patch('sys.stdout', new=StringIO()) as fake_out:
-                try:
-                    swapTool.main()
-                except Exception as e:
-                    logging.info('swapTool failed: stdout: %s', fake_out.getvalue())
-                    raise e
-
-                return fake_out.getvalue()
-
     def callxmrnodewallet(self, node_id, method, params=None):
         return callrpc_xmr(XMR_BASE_WALLET_RPC_PORT + node_id, self.xmr_wallet_auth[node_id], method, params)
 
@@ -255,8 +227,7 @@ class Test(unittest.TestCase):
     def startSwap(self, ID_ALICE_SWAP, ID_BOB_SWAP, amount_a, amount_b):
         logging.info('Set initial parameters.')
         part_addr_bob = callnoderpc(ID_BOB_PART, 'getnewaddress', ['bob\'s addr', False, False, False, 'bech32'])
-        ignr, a_pkhash_f = segwit_addr.decode('rtpw', part_addr_bob)
-        # After a successful swap the coinA amount will be in an output to a_pkhash_f
+        # After a successful swap the coinA amount will be in an output to part_addr_bob
 
         swap_info = {
             'side': 'a',
@@ -266,7 +237,7 @@ class Test(unittest.TestCase):
             'b_amount': amount_b,
             'a_feerate': 0.00032595,
             'b_feerate': 0.0012595,
-            'a_pkhash_f': bytes(a_pkhash_f).hex(),
+            'a_addr_f': part_addr_bob,
             'lock1': 10,
             'lock2': 11,
         }
@@ -279,7 +250,7 @@ class Test(unittest.TestCase):
             'wallet_port': XMR_BASE_WALLET_RPC_PORT + ID_ALICE_XMR,
             'wallet_auth': self.xmr_wallet_auth[ID_ALICE_XMR],
         }
-        self.callSwapTool(ID_ALICE_SWAP, 'init', swap_info)
+        callSwapTool(ID_ALICE_SWAP, 'init', swap_info)
 
         swap_info['a_connect'] = {
             'port': BASE_RPC_PORT + ID_BOB_PART,
@@ -291,14 +262,14 @@ class Test(unittest.TestCase):
             'wallet_auth': self.xmr_wallet_auth[ID_BOB_XMR],
         }
         swap_info['side'] = 'b'
-        self.callSwapTool(ID_BOB_SWAP, 'init', swap_info)
+        callSwapTool(ID_BOB_SWAP, 'init', swap_info)
 
         logging.info('Alice and Bob exchange keys.')
-        msg1f = self.callSwapTool(ID_ALICE_SWAP, 'msg1f')
-        msg1l = self.callSwapTool(ID_BOB_SWAP, 'msg1l')
+        msg1f = callSwapTool(ID_ALICE_SWAP, 'msg1f')
+        msg1l = callSwapTool(ID_BOB_SWAP, 'msg1l')
 
-        self.callSwapTool(ID_ALICE_SWAP, 'processmsg', str_param=msg1l)
-        self.callSwapTool(ID_BOB_SWAP, 'processmsg', str_param=msg1f)
+        callSwapTool(ID_ALICE_SWAP, 'processmsg', str_param=msg1l)
+        callSwapTool(ID_BOB_SWAP, 'processmsg', str_param=msg1f)
 
     def publishALockRefundTx(self, user_id_part, user_id_swap):
         alockrefundtxid = None
@@ -312,7 +283,7 @@ class Test(unittest.TestCase):
 
             logging.info('PART blocks: %d', callnoderpc(user_id_part, 'getblockchaininfo')['blocks'])
             try:
-                alockrefundtxid = self.callSwapTool(user_id_swap, 'publishalockrefundtx').strip()
+                alockrefundtxid = callSwapTool(user_id_swap, 'publishalockrefundtx').strip()
                 break
             except Exception as e:
                 print(str(e))
@@ -331,7 +302,7 @@ class Test(unittest.TestCase):
 
             logging.info('PART blocks: %d', callnoderpc(user_id_part, 'getblockchaininfo')['blocks'])
             try:
-                alockrefundspendtxid = self.callSwapTool(user_id_swap, 'publishalockrefundspendftx', str_param=bytes(a_pkhash_f).hex()).strip()
+                alockrefundspendtxid = callSwapTool(user_id_swap, 'publishalockrefundspendftx', str_param=bytes(a_pkhash_f).hex()).strip()
                 break
             except Exception as e:
                 print(str(e))
@@ -344,43 +315,42 @@ class Test(unittest.TestCase):
         return alockrefundspendtxid
 
     def test_01_swap_successful(self):
-
-        ID_ALICE_SWAP = 'test_01_alice_swap_state'
-        ID_BOB_SWAP = 'test_01_bob_swap_state'
+        ID_ALICE_SWAP = os.path.join(TEST_DIR, 'test_01_alice_swap_state') + '.json'
+        ID_BOB_SWAP = os.path.join(TEST_DIR, 'test_01_bob_swap_state') + '.json'
 
         self.startSwap(ID_ALICE_SWAP, ID_BOB_SWAP, 1, 2)
 
         logging.info('Alice creates the script-chain lock and refund txns and signs the refund tx, sends to Bob.')
-        msg2f = self.callSwapTool(ID_ALICE_SWAP, 'msg2f')
+        msg2f = callSwapTool(ID_ALICE_SWAP, 'msg2f')
 
         logging.info('Bob verifies the txns and signs the refund tx and creates an encrypted signature for the refund spend tx encumbered by Alice\'s coin B key share.')
-        self.callSwapTool(ID_BOB_SWAP, 'processmsg', str_param=msg2f)
-        msg3l = self.callSwapTool(ID_BOB_SWAP, 'msg3l')
+        callSwapTool(ID_BOB_SWAP, 'processmsg', str_param=msg2f)
+        msg3l = callSwapTool(ID_BOB_SWAP, 'msg3l')
 
         logging.info('Alice verifies the signature and encrypted signature from Bob.')
-        self.callSwapTool(ID_ALICE_SWAP, 'processmsg', str_param=msg3l)
+        callSwapTool(ID_ALICE_SWAP, 'processmsg', str_param=msg3l)
 
         logging.info('Creates the lock spend tx and signs an encrypted signature encumbered by Bob\'s coin B key share')
-        msg4f = self.callSwapTool(ID_ALICE_SWAP, 'msg4f')
+        msg4f = callSwapTool(ID_ALICE_SWAP, 'msg4f')
 
         logging.info('Publishes the script-chain lock tx.')
-        a_lock_txid = self.callSwapTool(ID_ALICE_SWAP, 'publishalocktx')
+        a_lock_txid = callSwapTool(ID_ALICE_SWAP, 'publishalocktx')
 
         # Check that the script-chain lock refund tx isn't mineable yet
         try:
-            rv = self.callSwapTool(ID_ALICE_SWAP, 'publishalockrefundtx')
+            rv = callSwapTool(ID_ALICE_SWAP, 'publishalockrefundtx')
             assert(False)
         except Exception as e:
             assert('non-BIP68-final' in str(e))
 
         logging.info('Bob verifies the lock spend tx and encrypted signature from Alice.')
-        self.callSwapTool(ID_BOB_SWAP, 'processmsg', str_param=msg4f)
+        callSwapTool(ID_BOB_SWAP, 'processmsg', str_param=msg4f)
 
         logging.info('Bob waits for the script-chain lock tx to confirm.')
 
         num_tries = 30
         for i in range(1 + num_tries):
-            rv = self.callSwapTool(ID_BOB_SWAP, 'confirmalocktx')
+            rv = callSwapTool(ID_BOB_SWAP, 'confirmalocktx')
             print('confirmalocktx', rv)
             if rv.strip() == 'True':
                 break
@@ -389,13 +359,13 @@ class Test(unittest.TestCase):
                 raise ValueError('Timed out waiting for script-chain lock tx to confirm.')
 
         logging.info('Then publishes the second-chain lock tx.')
-        b_lock_txid = self.callSwapTool(ID_BOB_SWAP, 'publishblocktx')
+        b_lock_txid = callSwapTool(ID_BOB_SWAP, 'publishblocktx')
 
         logging.info('Alice waits for the scriptless-chain lock tx to confirm.')
 
         num_tries = 40
         for i in range(1 + num_tries):
-            rv = self.callSwapTool(ID_ALICE_SWAP, 'confirmblocktx')
+            rv = callSwapTool(ID_ALICE_SWAP, 'confirmblocktx')
             print('confirmblocktx', rv)
             if rv.strip() == 'True':
                 break
@@ -416,18 +386,18 @@ class Test(unittest.TestCase):
             time.sleep(1)
 
         logging.info('Alice shares the secret value with Bob, allowing the script-chain lock tx to be spent')
-        msg5f = self.callSwapTool(ID_ALICE_SWAP, 'msg5f')
-        self.callSwapTool(ID_BOB_SWAP, 'processmsg', str_param=msg5f)
+        msg5f = callSwapTool(ID_ALICE_SWAP, 'msg5f')
+        callSwapTool(ID_BOB_SWAP, 'processmsg', str_param=msg5f)
 
         logging.info('Bob spends from the script-chain lock tx')
-        alockspendtxid = self.callSwapTool(ID_BOB_SWAP, 'publishalockspendtx')
+        alockspendtxid = callSwapTool(ID_BOB_SWAP, 'publishalockspendtx')
         logging.info('alockspendtxid %s', alockspendtxid)
 
         logging.info('Alice looks for Bob\'s script-chain lock spend tx and extracts the sig')
 
         num_tries = 20
         for i in range(1 + num_tries):
-            rv = self.callSwapTool(ID_ALICE_SWAP, 'findalockspendtx')
+            rv = callSwapTool(ID_ALICE_SWAP, 'findalockspendtx')
             print('findalockspendtx', rv)
             if rv.strip() == 'True':
                 break
@@ -440,7 +410,7 @@ class Test(unittest.TestCase):
         xmr_addr_alice1 = self.callxmrnodewallet(ID_ALICE_XMR, 'get_address')['address']
 
         logging.info('Alice redeems the scriptless-chain lock tx to her address: %s', xmr_addr_alice1)
-        rv = self.callSwapTool(ID_ALICE_SWAP, 'redeemblocktx', str_param=xmr_addr_alice1)
+        rv = callSwapTool(ID_ALICE_SWAP, 'redeemblocktx', str_param=xmr_addr_alice1)
         print('redeemblocktx', rv)
 
         self.callxmrnodewallet(ID_ALICE_XMR, 'close_wallet')
@@ -471,8 +441,8 @@ class Test(unittest.TestCase):
             time.sleep(1)
 
     def test_02_leader_recover_a_lock_tx(self):
-        ID_ALICE_SWAP = 'test_02_alice_swap_state'
-        ID_BOB_SWAP = 'test_02_bob_swap_state'
+        ID_ALICE_SWAP = os.path.join(TEST_DIR, 'test_02_alice_swap_state') + '.json'
+        ID_BOB_SWAP = os.path.join(TEST_DIR, 'test_02_bob_swap_state') + '.json'
 
         alice_btc_start = make_int(callnoderpc(ID_ALICE_PART, 'getbalances')['mine']['trusted'])
         bob_btc_start = make_int(callnoderpc(ID_BOB_PART, 'getbalances')['mine']['trusted'])
@@ -486,20 +456,20 @@ class Test(unittest.TestCase):
         self.startSwap(ID_ALICE_SWAP, ID_BOB_SWAP, 2, 3)
 
         logging.info('Alice creates the script-chain lock and refund txns and signs the refund tx, sends to Bob.')
-        msg2f = self.callSwapTool(ID_ALICE_SWAP, 'msg2f')
+        msg2f = callSwapTool(ID_ALICE_SWAP, 'msg2f')
 
         logging.info('Bob verifies the txns and signs the refund tx and creates an encrypted signature for the refund spend tx encumbered by Alice\'s coin B key share.')
-        self.callSwapTool(ID_BOB_SWAP, 'processmsg', str_param=msg2f)
-        msg3l = self.callSwapTool(ID_BOB_SWAP, 'msg3l')
+        callSwapTool(ID_BOB_SWAP, 'processmsg', str_param=msg2f)
+        msg3l = callSwapTool(ID_BOB_SWAP, 'msg3l')
 
         logging.info('Alice verifies the signature and encrypted signature from Bob.')
-        self.callSwapTool(ID_ALICE_SWAP, 'processmsg', str_param=msg3l)
+        callSwapTool(ID_ALICE_SWAP, 'processmsg', str_param=msg3l)
 
         logging.info('Creates the lock spend tx and signs an encrypted signature encumbered by Bob\'s coin B key share')
-        msg4f = self.callSwapTool(ID_ALICE_SWAP, 'msg4f')
+        msg4f = callSwapTool(ID_ALICE_SWAP, 'msg4f')
 
         logging.info('Publishes the script-chain lock tx.')
-        a_lock_txid = self.callSwapTool(ID_ALICE_SWAP, 'publishalocktx').strip()
+        a_lock_txid = callSwapTool(ID_ALICE_SWAP, 'publishalocktx').strip()
 
         # Wait for the mining node to receive the tx
         for i in range(10):
@@ -518,11 +488,11 @@ class Test(unittest.TestCase):
         a_lock_refund_txid = self.publishALockRefundTx(ID_ALICE_PART, ID_ALICE_SWAP)
 
         # Import key to receive refund in wallet.  Simple method for testing.
-        kal = self.callSwapTool(ID_ALICE_SWAP, 'getkal')
+        kal = callSwapTool(ID_ALICE_SWAP, 'getkal')
         kal_wif = bytes_to_wif(h2b(kal), prefix=0x2e)
         callnoderpc(ID_ALICE_PART, 'importprivkey', [kal_wif, 'swap refund'])
 
-        alockrefundspendtxid = self.callSwapTool(ID_ALICE_SWAP, 'publishalockrefundspendtx')
+        alockrefundspendtxid = callSwapTool(ID_ALICE_SWAP, 'publishalockrefundspendtx')
 
         rv = callnoderpc(ID_ALICE_PART, 'getbalances')
         alice_btc_end = make_int(rv['mine']['trusted']) + make_int(rv['mine']['untrusted_pending'])
@@ -531,8 +501,8 @@ class Test(unittest.TestCase):
         assert(alice_btc_end > alice_btc)
 
     def test_03_follower_recover_a_lock_tx(self):
-        ID_ALICE_SWAP = 'test_03_alice_swap_state'
-        ID_BOB_SWAP = 'test_03_bob_swap_state'
+        ID_ALICE_SWAP = os.path.join(TEST_DIR, 'test_03_alice_swap_state') + '.json'
+        ID_BOB_SWAP = os.path.join(TEST_DIR, 'test_03_bob_swap_state') + '.json'
 
         alice_btc_start = make_int(callnoderpc(ID_ALICE_PART, 'getbalances')['mine']['trusted'])
         bob_btc_start = make_int(callnoderpc(ID_BOB_PART, 'getbalances')['mine']['trusted'])
@@ -544,12 +514,12 @@ class Test(unittest.TestCase):
 
         # Same steps as in test_01_swap_successful
         self.startSwap(ID_ALICE_SWAP, ID_BOB_SWAP, 3, 4)
-        msg2f = self.callSwapTool(ID_ALICE_SWAP, 'msg2f')
-        self.callSwapTool(ID_BOB_SWAP, 'processmsg', str_param=msg2f)
-        msg3l = self.callSwapTool(ID_BOB_SWAP, 'msg3l')
-        self.callSwapTool(ID_ALICE_SWAP, 'processmsg', str_param=msg3l)
-        msg4f = self.callSwapTool(ID_ALICE_SWAP, 'msg4f')
-        a_lock_txid = self.callSwapTool(ID_ALICE_SWAP, 'publishalocktx').strip()
+        msg2f = callSwapTool(ID_ALICE_SWAP, 'msg2f')
+        callSwapTool(ID_BOB_SWAP, 'processmsg', str_param=msg2f)
+        msg3l = callSwapTool(ID_BOB_SWAP, 'msg3l')
+        callSwapTool(ID_ALICE_SWAP, 'processmsg', str_param=msg3l)
+        msg4f = callSwapTool(ID_ALICE_SWAP, 'msg4f')
+        a_lock_txid = callSwapTool(ID_ALICE_SWAP, 'publishalocktx').strip()
 
         logging.info('Alice stops responding here.')
 
@@ -587,8 +557,8 @@ class Test(unittest.TestCase):
         assert(bob_btc_end > bob_btc_start)
 
     def test_04_follower_recover_b_lock_tx(self):
-        ID_ALICE_SWAP = 'test_04_alice_swap_state'
-        ID_BOB_SWAP = 'test_04_bob_swap_state'
+        ID_ALICE_SWAP = os.path.join(TEST_DIR, 'test_04_alice_swap_state') + '.json'
+        ID_BOB_SWAP = os.path.join(TEST_DIR, 'test_04_bob_swap_state') + '.json'
 
         alice_btc_start = make_int(callnoderpc(ID_ALICE_PART, 'getbalances')['mine']['trusted'])
         bob_btc_start = make_int(callnoderpc(ID_BOB_PART, 'getbalances')['mine']['trusted'])
@@ -600,21 +570,21 @@ class Test(unittest.TestCase):
 
         # Same steps as in test_01_swap_successful
         self.startSwap(ID_ALICE_SWAP, ID_BOB_SWAP, 3, 4)
-        msg2f = self.callSwapTool(ID_ALICE_SWAP, 'msg2f')
-        self.callSwapTool(ID_BOB_SWAP, 'processmsg', str_param=msg2f)
-        msg3l = self.callSwapTool(ID_BOB_SWAP, 'msg3l')
-        self.callSwapTool(ID_ALICE_SWAP, 'processmsg', str_param=msg3l)
-        msg4f = self.callSwapTool(ID_ALICE_SWAP, 'msg4f')
-        a_lock_txid = self.callSwapTool(ID_ALICE_SWAP, 'publishalocktx').strip()
+        msg2f = callSwapTool(ID_ALICE_SWAP, 'msg2f')
+        callSwapTool(ID_BOB_SWAP, 'processmsg', str_param=msg2f)
+        msg3l = callSwapTool(ID_BOB_SWAP, 'msg3l')
+        callSwapTool(ID_ALICE_SWAP, 'processmsg', str_param=msg3l)
+        msg4f = callSwapTool(ID_ALICE_SWAP, 'msg4f')
+        a_lock_txid = callSwapTool(ID_ALICE_SWAP, 'publishalocktx').strip()
 
         logging.info('Bob verifies the lock spend tx and encrypted signature from Alice.')
-        self.callSwapTool(ID_BOB_SWAP, 'processmsg', str_param=msg4f)
+        callSwapTool(ID_BOB_SWAP, 'processmsg', str_param=msg4f)
 
         logging.info('Bob waits for the script-chain lock tx to confirm.')
 
         num_tries = 30
         for i in range(1 + num_tries):
-            rv = self.callSwapTool(ID_BOB_SWAP, 'confirmalocktx')
+            rv = callSwapTool(ID_BOB_SWAP, 'confirmalocktx')
             print('confirmalocktx', rv)
             if rv.strip() == 'True':
                 break
@@ -623,13 +593,13 @@ class Test(unittest.TestCase):
                 raise ValueError('Timed out waiting for script-chain lock tx to confirm.')
 
         logging.info('Then publishes the second-chain lock tx.')
-        b_lock_txid = self.callSwapTool(ID_BOB_SWAP, 'publishblocktx')
+        b_lock_txid = callSwapTool(ID_BOB_SWAP, 'publishblocktx')
 
         logging.info('Alice waits for the scriptless-chain lock tx to confirm.')
 
         num_tries = 40
         for i in range(1 + num_tries):
-            rv = self.callSwapTool(ID_ALICE_SWAP, 'confirmblocktx')
+            rv = callSwapTool(ID_ALICE_SWAP, 'confirmblocktx')
             print('confirmblocktx', rv)
             if rv.strip() == 'True':
                 break
@@ -643,11 +613,11 @@ class Test(unittest.TestCase):
         a_lock_refund_txid = self.publishALockRefundTx(ID_ALICE_PART, ID_ALICE_SWAP)
 
         # Import key to receive refund in wallet.  Simple method for testing.
-        kal = self.callSwapTool(ID_ALICE_SWAP, 'getkal')
+        kal = callSwapTool(ID_ALICE_SWAP, 'getkal')
         kal_wif = bytes_to_wif(h2b(kal), prefix=0x2e)
         callnoderpc(ID_ALICE_PART, 'importprivkey', [kal_wif, 'swap refund'])
 
-        alockrefundspendtxid = self.callSwapTool(ID_ALICE_SWAP, 'publishalockrefundspendtx')
+        alockrefundspendtxid = callSwapTool(ID_ALICE_SWAP, 'publishalockrefundspendtx')
 
         rv = callnoderpc(ID_ALICE_PART, 'getbalances')
         print('getbalances', dumpj(rv))
@@ -658,7 +628,7 @@ class Test(unittest.TestCase):
 
         num_tries = 20
         for i in range(1 + num_tries):
-            rv = self.callSwapTool(ID_BOB_SWAP, 'findalockrefundspendtx')
+            rv = callSwapTool(ID_BOB_SWAP, 'findalockrefundspendtx')
             print('findalockrefundspendtx', rv)
             if rv.strip() == 'True':
                 break
@@ -671,7 +641,7 @@ class Test(unittest.TestCase):
         self.callxmrnodewallet(ID_BOB_XMR, 'open_wallet', {'filename': 'testwallet'})
         xmr_addr_bob = self.callxmrnodewallet(ID_BOB_XMR, 'get_address')['address']
 
-        rv = self.callSwapTool(ID_BOB_SWAP, 'redeemblocktx', str_param=xmr_addr_bob)
+        rv = callSwapTool(ID_BOB_SWAP, 'redeemblocktx', str_param=xmr_addr_bob)
         print('redeemblocktx', rv)
 
         self.callxmrnodewallet(ID_BOB_XMR, 'close_wallet')

@@ -49,21 +49,24 @@ def make_xmr_wallet_rpc_func(port, auth):
     return rpc_func
 
 
-def make_rpc_func(port, username, password):
+def make_rpc_func(port, username, password, wallet=None):
     port = port
     auth = '{}:{}'.format(username, password)
+    wallet = wallet
 
-    def rpc_func(method, params=None, wallet=None):
-        nonlocal port, auth
-        return callrpc(port, auth, method, params, wallet)
+    def rpc_func(method, params=None, wallet_override=None):
+        nonlocal port, auth, wallet
+        return callrpc(port, auth, method, params, wallet if wallet_override is None else wallet_override)
     return rpc_func
 
 
 def makeInterface(coin_type, connection_data):
     if coin_type == CoinIds.BTC:
-        return BTCInterface(make_rpc_func(connection_data['port'], connection_data['username'], connection_data['password']))
+        wallet_name = connection_data['wallet'] if 'wallet' in connection_data else None
+        return BTCInterface(make_rpc_func(connection_data['port'], connection_data['username'], connection_data['password'], wallet=wallet_name))
     elif coin_type == CoinIds.PART:
-        return PARTInterface(make_rpc_func(connection_data['port'], connection_data['username'], connection_data['password']))
+        wallet_name = connection_data['wallet'] if 'wallet' in connection_data else None
+        return PARTInterface(make_rpc_func(connection_data['port'], connection_data['username'], connection_data['password'], wallet=wallet_name))
     elif coin_type == CoinIds.XMR:
         return XMRInterface(make_xmr_rpc_func(connection_data['port']),
                             make_xmr_wallet_rpc_func(connection_data['wallet_port'], connection_data['wallet_auth']))
@@ -136,7 +139,7 @@ class SwapInfo:
         self.Kasl = self.ai.pubkey(self.kbsl)
 
         if self.b_type == CoinIds.XMR:
-            logging.info('%s: Generating DLEAG for kbsl...', self.desc_self())
+            logging.info('%s: Generating DLEAG proof for kbsl...', self.desc_self())
             nonce = self.bi.getNewSecretValue()
             self.kbsl_dleag = dleag.proveDLEAG(self.kbsl, nonce)
 
@@ -159,7 +162,7 @@ class SwapInfo:
         self.Kasf = self.ai.pubkey(self.kbsf)
 
         if self.b_type == CoinIds.XMR:
-            logging.info('%s: Generating DLEAG for kbsf...', self.desc_self())
+            logging.info('%s: Generating DLEAG proof for kbsf...', self.desc_self())
             nonce = self.bi.getNewSecretValue()
             self.kbsf_dleag = dleag.proveDLEAG(self.kbsf, nonce)
 
@@ -342,7 +345,7 @@ class SwapInfo:
         self.Kbs = self.bi.sumPubkeys(self.Kbsl, self.Kbsf)
 
         if self.b_type == CoinIds.XMR:
-            logging.info('%s: Verifying DLEAG for kbsl...', self.desc_self())
+            logging.info('%s: Verifying DLEAG proof for kbsl...', self.desc_self())
             valid = dleag.verifyDLEAG(self.kbsl_dleag)
             assert(valid)
 
@@ -379,7 +382,7 @@ class SwapInfo:
         self.Kbs = self.bi.sumPubkeys(self.Kbsl, self.Kbsf)
 
         if self.b_type == CoinIds.XMR:
-            logging.info('%s: Verifying DLEAG for kbsf...', self.desc_self())
+            logging.info('%s: Verifying DLEAG proof for kbsf...', self.desc_self())
             valid = dleag.verifyDLEAG(self.kbsf_dleag)
             assert(valid)
 

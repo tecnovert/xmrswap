@@ -40,7 +40,7 @@ class XMRInterface(CoinInterface):
         return 32
 
     def __init__(self, rpc_cb, rpc_wallet_cb):
-        self.rpc_cb = rpc_cb
+        self.rpc_cb = rpc_cb  # Not essential
         self.rpc_wallet_cb = rpc_wallet_cb
 
     def getNewSecretKey(self):
@@ -97,8 +97,12 @@ class XMRInterface(CoinInterface):
             rv = self.rpc_wallet_cb('open_wallet', {'filename': address_b58})
 
         # Debug
-        current_height = self.rpc_cb('get_block_count')['count']
-        logging.info('findTxB XMR current_height %d\nAddress: %s', current_height, address_b58)
+        try:
+            current_height = self.rpc_cb('get_block_count')['count']
+            logging.info('findTxB XMR current_height %d\nAddress: %s', current_height, address_b58)
+        except Exception as e:
+            logging.info('rpc_cb failed %s', str(e))
+
 
         # TODO: Why is rescan necessary?
         self.rpc_wallet_cb('rescan_blockchain')
@@ -131,8 +135,11 @@ class XMRInterface(CoinInterface):
 
         num_tries = 40
         for i in range(num_tries + 1):
-            current_height = self.rpc_cb('get_block_count')['count']
-            print('current_height', current_height)
+            try:
+                current_height = self.rpc_cb('get_block_count')['count']
+                print('current_height', current_height)
+            except Exception as e:
+                logging.info('rpc_cb failed %s', str(e))
             params = {'transfer_type': 'available'}
             rv = self.rpc_wallet_cb('incoming_transfers', params)
             print('rv', rv)

@@ -3,7 +3,7 @@
 
 ## Overview
 
-Implementation of the h4sh3d Bitcoin–Monero Cross-chain Atomic Swap protocol.  
+Implementation of the h4sh3d Bitcoin–Monero Cross-chain Atomic Swap protocol.
 https://github.com/h4sh3d/xmr-btc-atomic-swap/blob/master/whitepaper/xmr-btc.pdf
 
 Use at your own risk.
