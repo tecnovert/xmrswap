@@ -10,7 +10,6 @@ import json
 import urllib
 import logging
 import requests
-import traceback
 import subprocess
 from xmlrpc.client import (
     Transport,
@@ -103,8 +102,7 @@ def callrpc(rpc_port, auth, method, params=[], wallet=None, path=''):
         x.close()
         r = json.loads(v.decode('utf-8'))
     except Exception as ex:
-        traceback.print_exc()
-        raise ValueError('RPC Server Error')
+        raise ValueError('RPC Server Error: {}'.format(str(ex)))
 
     if 'error' in r and r['error'] is not None:
         raise ValueError('RPC error ' + str(r['error']))
@@ -146,8 +144,7 @@ def callrpc_xmr(rpc_port, auth, method, params=[], wallet=None, path='json_rpc')
         p = requests.post(url, data=json.dumps(request_body), auth=requests.auth.HTTPDigestAuth(auth[0], auth[1]), headers=headers)
         r = json.loads(p.text)
     except Exception as ex:
-        traceback.print_exc()
-        raise ValueError('RPC Server Error')
+        raise ValueError('RPC Server Error: {}'.format(str(ex)))
 
     if 'error' in r and r['error'] is not None:
         raise ValueError('RPC error ' + str(r['error']))
@@ -170,8 +167,7 @@ def callrpc_xmr_na(rpc_port, method, params=[], path='json_rpc'):
         p = requests.post(url, data=json.dumps(request_body), headers=headers)
         r = json.loads(p.text)
     except Exception as ex:
-        traceback.print_exc()
-        raise ValueError('RPC Server Error')
+        raise ValueError('RPC Server Error: {}'.format(str(ex)))
 
     if 'error' in r and r['error'] is not None:
         raise ValueError('RPC error ' + str(r['error']))
@@ -188,7 +184,6 @@ def callrpc_xmr2(rpc_port, method, params=[]):
         p = requests.post(url, data=json.dumps(params), headers=headers)
         r = json.loads(p.text)
     except Exception as ex:
-        traceback.print_exc()
-        raise ValueError('RPC Server Error')
+        raise ValueError('RPC Server Error: {}'.format(str(ex)))
 
     return r
