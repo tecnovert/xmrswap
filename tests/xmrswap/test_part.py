@@ -12,7 +12,7 @@ import logging
 import unittest
 import threading
 
-from xmrswap.rpc import waitForRPC, callrpc_xmr, callrpc_xmr_na, callrpc_xmr2
+from xmrswap.rpc import waitForRPC, callrpc_xmr, callrpc_xmr_na
 from xmrswap.util import dumpj, make_int
 from xmrswap.ecc_util import h2b
 from xmrswap.interface_xmr import XMR_COIN
@@ -44,14 +44,16 @@ ID_BOB_PART = 2
 
 def run_loop(cls):
     while not cls.stop_nodes:
-        if cls.xmr_addr is not None:
-            callrpc_xmr_na(XMR_BASE_RPC_PORT + 0, 'generateblocks', {'wallet_address': cls.xmr_addr, 'amount_of_blocks': 1})
+        try:
+            if cls.xmr_addr is not None:
+                callrpc_xmr_na(XMR_BASE_RPC_PORT + 0, 'generateblocks', {'wallet_address': cls.xmr_addr, 'amount_of_blocks': 1})
 
-        part_height = callnoderpc(0, 'getblockchaininfo')['blocks']
-        if cls.part_stakelimit <= part_height:
-            cls.part_stakelimit += 1
-            callnoderpc(0, 'walletsettings', ['stakelimit', {'height': cls.part_stakelimit}])
-
+            part_height = callnoderpc(0, 'getblockchaininfo')['blocks']
+            if cls.part_stakelimit <= part_height:
+                cls.part_stakelimit += 1
+                callnoderpc(0, 'walletsettings', ['stakelimit', {'height': cls.part_stakelimit}])
+        except Exception as e:
+            logging.error('Update thread: %s', str(e))
         time.sleep(0.5)
 
 
@@ -369,17 +371,6 @@ class Test(unittest.TestCase):
             print('confirmblocktx', rv)
             if rv.strip() == 'True':
                 break
-
-            # Debug - Why does this fail / take long some runs?
-            rv = self.callxmrnodewallet(ID_BOB_XMR, 'getbalance')
-            logging.info('[rm] Bob get_balance %s', dumpj(rv))
-            params = {'out': True}
-            rv = self.callxmrnodewallet(ID_BOB_XMR, 'get_transfers', params)
-            logging.info('[rm] Bob get_transfers %s', dumpj(rv))
-            rv = callrpc_xmr2(XMR_BASE_RPC_PORT + ID_BOB_XMR, 'get_transactions', {'txs_hashes': [b_lock_txid], 'decode_as_json': True})
-            logging.info('[rm] Bob get_transactions %s', dumpj(rv))
-            rv = callrpc_xmr2(XMR_BASE_RPC_PORT + ID_ALICE_XMR, 'get_transactions', {'txs_hashes': [b_lock_txid], 'decode_as_json': True})
-            logging.info('[rm] Alice get_transactions %s', dumpj(rv))
 
             if i >= num_tries:
                 raise ValueError('Timed out waiting for scriptless-chain lock tx to confirm.')
