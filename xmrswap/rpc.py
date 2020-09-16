@@ -95,7 +95,7 @@ def callrpc(rpc_port, auth, method, params=[], wallet=None, path=''):
     try:
         url = 'http://{}@127.0.0.1:{}/{}'.format(auth, rpc_port, path)
         if wallet:
-            url += 'wallet/' + wallet
+            url += 'wallet/' + urllib.parse.quote(wallet)
         x = Jsonrpc(url)
 
         v = x.json_request(method, params)
@@ -128,7 +128,7 @@ def callrpc_cli(bindir, datadir, chain, cmd, cli_bin='particl-cli'):
     return r
 
 
-def callrpc_xmr(rpc_port, auth, method, params=[], wallet=None, path='json_rpc'):
+def callrpc_xmr(rpc_port, auth, method, params=[], path='json_rpc'):
     # auth is a tuple: (username, password)
     try:
         url = 'http://127.0.0.1:{}/{}'.format(rpc_port, path)
