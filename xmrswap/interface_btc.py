@@ -370,7 +370,8 @@ class BTCInterface(CoinInterface):
                      sh,
                      Kal, Kaf,
                      lock_value, feerate,
-                     Karl, Karf):
+                     Karl, Karf,
+                     check_lock_tx_inputs):
         # Verify:
         #
 
@@ -400,38 +401,39 @@ class BTCInterface(CoinInterface):
         assert_cond(C == self.encodePubkey(Karl), 'Bad script pubkey')
         assert_cond(D == self.encodePubkey(Karf), 'Bad script pubkey')
 
-        # Check that inputs are unspent and verify fee rate
-        inputs_value = 0
-        add_bytes = 0
-        add_witness_bytes = getCompactSizeLen(len(tx.vin))
-        for pi in tx.vin:
-            ptx = self.rpc_callback('getrawtransaction', [i2h(pi.prevout.hash), True])
-            print('ptx', dumpj(ptx))
-            prevout = ptx['vout'][pi.prevout.n]
-            inputs_value += make_int(prevout['value'])
+        if check_lock_tx_inputs:
+            # Check that inputs are unspent and verify fee rate
+            inputs_value = 0
+            add_bytes = 0
+            add_witness_bytes = getCompactSizeLen(len(tx.vin))
+            for pi in tx.vin:
+                ptx = self.rpc_callback('getrawtransaction', [i2h(pi.prevout.hash), True])
+                print('ptx', dumpj(ptx))
+                prevout = ptx['vout'][pi.prevout.n]
+                inputs_value += make_int(prevout['value'])
 
-            prevout_type = prevout['scriptPubKey']['type']
-            if prevout_type == 'witness_v0_keyhash':
-                add_witness_bytes += 107  # sig 72, pk 33 and 2 size bytes
-                add_witness_bytes += getCompactSizeLen(107)
-            else:
-                # Assume P2PKH, TODO more types
-                add_bytes += 107  # OP_PUSH72 <ecdsa_signature> OP_PUSH33 <public_key>
+                prevout_type = prevout['scriptPubKey']['type']
+                if prevout_type == 'witness_v0_keyhash':
+                    add_witness_bytes += 107  # sig 72, pk 33 and 2 size bytes
+                    add_witness_bytes += getCompactSizeLen(107)
+                else:
+                    # Assume P2PKH, TODO more types
+                    add_bytes += 107  # OP_PUSH72 <ecdsa_signature> OP_PUSH33 <public_key>
 
-        outputs_value = 0
-        for txo in tx.vout:
-            outputs_value += txo.nValue
-        fee_paid = inputs_value - outputs_value
-        assert(fee_paid > 0)
+            outputs_value = 0
+            for txo in tx.vout:
+                outputs_value += txo.nValue
+            fee_paid = inputs_value - outputs_value
+            assert(fee_paid > 0)
 
-        vsize = self.getTxVSize(tx, add_bytes, add_witness_bytes)
-        fee_rate_paid = fee_paid * 1000 / vsize
+            vsize = self.getTxVSize(tx, add_bytes, add_witness_bytes)
+            fee_rate_paid = fee_paid * 1000 / vsize
 
-        logging.info('tx amount, vsize, feerate: %ld, %ld, %ld', locked_coin, vsize, fee_rate_paid)
+            logging.info('tx amount, vsize, feerate: %ld, %ld, %ld', locked_coin, vsize, fee_rate_paid)
 
-        if not self.compareFeeRates(fee_rate_paid, feerate):
-            logging.warning('feerate paid doesn\'t match expected: %ld, %ld', fee_rate_paid, feerate)
-            # TODO: Display warning to user
+            if not self.compareFeeRates(fee_rate_paid, feerate):
+                logging.warning('feerate paid doesn\'t match expected: %ld, %ld', fee_rate_paid, feerate)
+                # TODO: Display warning to user
 
         return tx_hash, locked_n
 

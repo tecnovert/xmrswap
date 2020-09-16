@@ -94,7 +94,7 @@ class SwapInfo:
         return 'Unknown'
 
     def setSwapParameters(self, coin_a, val_a, coin_b, val_b, fee_rate_a, fee_rate_b, a_pkhash_f,
-                          lock1=100, lock2=101, conf_a=1, conf_b=1, restore_height_b=0):
+                          lock1=100, lock2=101, conf_a=1, conf_b=1, restore_height_b=0, check_a_lock_tx_inputs=True):
         self.status = 'Unknown'
         self.a_type = coin_a
         self.b_type = coin_b
@@ -114,6 +114,8 @@ class SwapInfo:
         self.b_block_confirmed = conf_b
 
         self.b_restore_height = restore_height_b
+
+        self.check_a_lock_tx_inputs = check_a_lock_tx_inputs
 
     def initialiseLeader(self, coin_a_interface, coin_b_interface):
         self.swap_leader = True
@@ -433,6 +435,7 @@ class SwapInfo:
             self.Kal, self.Kaf,
             self.lock_time_1, self.a_fee_rate,
             self.Karl, self.Karf,
+            self.check_a_lock_tx_inputs
         )
         self.a_lock_tx_dest = self.ai.getScriptDest(self.a_lock_tx_script)
 
@@ -772,6 +775,7 @@ class SwapInfo:
         self.putattr(jso, 'b_block_confirmed')
 
         self.putattr(jso, 'b_restore_height')
+        self.putattr(jso, 'check_a_lock_tx_inputs')
 
         if self.ai is None or self.bi is None:
             return
@@ -876,6 +880,7 @@ class SwapInfo:
         self.loadattr(jsi, 'b_block_confirmed')
 
         self.loadattr(jsi, 'b_restore_height')
+        self.loadattr(jsi, 'check_a_lock_tx_inputs')
 
         try:
             self.ai = makeInterface(self.a_type, self.a_connect)

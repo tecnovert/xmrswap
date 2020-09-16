@@ -108,7 +108,9 @@ def initialiseSwap(swapinfo, data):
 
     restore_height_b = data['b_restore_height'] if 'b_restore_height' in data else 0
 
-    swapinfo.setSwapParameters(a_coin, a_amount, b_coin, b_amount, a_feerate, b_feerate, a_pkhash_f, lock1=lock1, lock2=lock2, restore_height_b=restore_height_b)
+    check_a_lock_tx_inputs = data['check_a_lock_tx_inputs'] if 'check_a_lock_tx_inputs' in data else True
+
+    swapinfo.setSwapParameters(a_coin, a_amount, b_coin, b_amount, a_feerate, b_feerate, a_pkhash_f, lock1=lock1, lock2=lock2, restore_height_b=restore_height_b, check_a_lock_tx_inputs=check_a_lock_tx_inputs)
 
     if data['side'].lower() == 'a':
         swapinfo.initialiseLeader(ai, bi)
