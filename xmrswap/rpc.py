@@ -94,7 +94,7 @@ class Jsonrpc():
 def callrpc(rpc_port, auth, method, params=[], wallet=None, path=''):
     try:
         url = 'http://{}@127.0.0.1:{}/{}'.format(auth, rpc_port, path)
-        if wallet:
+        if wallet is not None:
             url += 'wallet/' + urllib.parse.quote(wallet)
         x = Jsonrpc(url)
 
