@@ -3,8 +3,8 @@ container:
 
 lint_task:
   setup_script:
-    - pip install flake8
-    - pip install codespell
+    - pip install flake8==3.8.3
+    - pip install codespell==1.17.1
   script:
     - PYTHONWARNINGS="ignore" flake8 --ignore=E501,F841,W503 --exclude=xmrswap/contrib,.eggs
     - codespell --check-filenames --disable-colors --quiet-level=7 --ignore-words=tests/lint/spelling.ignore-words.txt -S contrib,.git,.eggs,*.pyc
