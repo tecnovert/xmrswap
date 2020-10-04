@@ -13,7 +13,7 @@ test_task:
   environment:
     - PART_VERSION: 0.19.1.1
     - BTC_VERSION: 0.20.1
-    - XMR_VERSION: 0.16.0.3
+    - XMR_VERSION: 0.17.0.1
     - TEST_DATADIRS: $HOME/test
     - BIN_DIRS: $HOME/binaries
     - PARTICL_BINDIR: ${BIN_DIRS}/particl-${PART_VERSION}/bin
