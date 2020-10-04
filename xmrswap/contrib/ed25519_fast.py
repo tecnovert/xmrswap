@@ -94,14 +94,14 @@ d = -121665 * inv(121666) % q
 I = pow(2, (q - 1) // 4, q)
 
 
-def xrecover(y):
+def xrecover(y, sign=0):
     xx = (y * y - 1) * inv(d * y * y + 1)
     x = pow(xx, (q + 3) // 8, q)
 
     if (x * x - xx) % q != 0:
         x = (x * I) % q
 
-    if x % 2 != 0:
+    if x % 2 != sign:
         x = q-x
 
     return x
@@ -341,13 +341,4 @@ def checkvalid(s, m, pk):
 
 
 def is_identity(P):
-    # Skip inverting P[2] by scaling the infinity y coord by P[2]
-    return True if P[0] == 0 and P[1] == (1 * P[2]) % q else False
-    """
-    # Normalise point
-    zi = inv(P[2])
-    x = (P[0] * zi) % q
-    y = (P[1] * zi) % q
-
-    return True if x == 0 and y == 1 else False
-    """
+    return True if P[0] == 0 else False

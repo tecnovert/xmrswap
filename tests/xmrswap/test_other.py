@@ -14,6 +14,12 @@ from xmrswap.util import (
     format_amount,
     validate_amount
 )
+from xmrswap.ecc_util import b2h, h2b
+from xmrswap.ed25519_fast_util import (
+    hashToEd25519,
+    encodepoint
+)
+import xmrswap.contrib.ed25519_fast as edf
 
 
 class Test(unittest.TestCase):
@@ -96,6 +102,16 @@ class Test(unittest.TestCase):
             assert(False)
         except Exception as e:
             assert('Too many decimal places' in str(e))
+
+    def test_ed25519(self):
+        assert(encodepoint(edf.B) == b'Xfffffffffffffffffffffffffffffff')
+
+        assert(b2h(encodepoint(hashToEd25519(encodepoint(edf.B))))
+               == '13b663e5e06bf5301c77473bb2fc5beb51e4046e9b7efef2f6d1a324cb8b1094')
+
+        test_point_2 = '97ab9932634c2a71ded409c73e84d64487dcc224f9728fde24ef3327782e68c3'
+        assert(b2h(encodepoint(hashToEd25519(h2b(test_point_2))))
+               == 'ade1232c101e6e42564b97ac2b38387a509df0a31d38e36bf4bdf4ad2f4f5573')
 
 
 if __name__ == '__main__':

@@ -20,8 +20,11 @@ def encodepoint(P):
 def hashToEd25519(bytes_in):
     hashed = hashlib.sha256(bytes_in).digest()
     for i in range(1000):
-        y = int.from_bytes(hashed, byteorder='big') % edf.q
-        x = edf.xrecover(y) % edf.q
+        h255 = bytearray(hashed)
+        x_sign = 0 if h255[31] & 0x80 == 0 else 1
+        h255[31] &= 0x7f  # Clear top bit
+        y = int.from_bytes(h255, byteorder='little')
+        x = edf.xrecover(y, x_sign)
         if x == 0 and y == 1:  # Skip infinity point
             continue
 
