@@ -7,6 +7,7 @@
 
 import os
 import sys
+import time
 import signal
 import logging
 import subprocess
@@ -14,7 +15,7 @@ import subprocess
 from io import StringIO
 from unittest.mock import patch
 
-from xmrswap.rpc import callrpc
+from xmrswap.rpc import callrpc, callrpc_xmr, callrpc_xmr_na
 from xmrswap.util import dumpje
 from xmrswap.contrib.rpcauth import generate_salt, password_to_hmac
 
@@ -196,6 +197,30 @@ def callSwapTool(swap_file, method=None, json_params=None, str_param=None):
                 raise e
 
             return fake_out.getvalue()
+
+
+def waitForXMRNode(rpc_offset, max_tries=7):
+    for i in range(max_tries + 1):
+        try:
+            callrpc_xmr_na(XMR_BASE_RPC_PORT + rpc_offset, 'get_block_count')
+            return
+        except Exception as ex:
+            if i < max_tries:
+                logging.warning('Can\'t connect to XMR wallet RPC: %s. Retrying in %d second/s.', str(ex), (i + 1))
+                time.sleep(i + 1)
+    raise ValueError('waitForXMRNode failed')
+
+
+def waitForXMRWallet(rpc_offset, auth, max_tries=7):
+    for i in range(max_tries + 1):
+        try:
+            callrpc_xmr(XMR_BASE_WALLET_RPC_PORT + rpc_offset, auth, 'get_languages')
+            return
+        except Exception as ex:
+            if i < max_tries:
+                logging.warning('Can\'t connect to XMR wallet RPC: %s. Retrying in %d second/s.', str(ex), (i + 1))
+                time.sleep(i + 1)
+    raise ValueError('waitForXMRWallet failed')
 
 
 def stopNodes(self):

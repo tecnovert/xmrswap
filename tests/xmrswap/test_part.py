@@ -30,7 +30,8 @@ from tests.xmrswap.common import (
     XMR_BASE_RPC_PORT, XMR_BASE_WALLET_RPC_PORT,
     prepareXmrDataDir, prepareDataDir,
     startXmrDaemon, startXmrWalletRPC,
-    startDaemon, callnoderpc, make_rpc_func, stopNodes, callSwapTool
+    startDaemon, callnoderpc, make_rpc_func, stopNodes, callSwapTool,
+    waitForXMRNode, waitForXMRWallet
 )
 
 TEST_DIR = os.path.join(TEST_DATADIRS, 'part')
@@ -102,22 +103,15 @@ class Test(unittest.TestCase):
 
             cls.xmr_daemons.append(startXmrDaemon(os.path.join(TEST_DIR, 'xmr' + str(i)), XMR_BINDIR, XMRD))
             logging.info('Started %s %d', XMRD, cls.xmr_daemons[-1].pid)
+            waitForXMRNode(i)
 
             cls.xmr_daemons.append(startXmrWalletRPC(os.path.join(TEST_DIR, 'xmr' + str(i)), XMR_BINDIR, XMR_WALLET_RPC, i))
-
-        time.sleep(1)  # TODO: Wait for xmr nodes to start
 
         for i in range(XMR_NUM_NODES):
             cls.xmr_wallet_auth.append(('test{0}'.format(i), 'test_pass{0}'.format(i)))
             logging.info('Creating XMR wallet %i', i)
 
-            for r in range(5):
-                try:
-                    callrpc_xmr(XMR_BASE_WALLET_RPC_PORT + i, cls.xmr_wallet_auth[i], 'get_languages')
-                    break
-                except Exception as ex:
-                    logging.warning('Can\'t connect to XMR wallet RPC: %s.  Trying again in %d second/s.', str(ex), (1 + i))
-                    time.sleep(1 + i)
+            waitForXMRWallet(i, cls.xmr_wallet_auth[i])
 
             cls.callxmrnodewallet(cls, i, 'create_wallet', {'filename': 'testwallet', 'language': 'English'})
             cls.callxmrnodewallet(cls, i, 'open_wallet', {'filename': 'testwallet'})
