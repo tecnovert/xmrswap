@@ -25,38 +25,38 @@ HG = hashToCurve(ToDER(G))
 HB = edu.hashToEd25519(edu.encodepoint(edf.B))
 
 
-def get_fe_secp256k1(csprng):
+def get_sc_secp256k1(csprng):
     for i in range(1000):
         bi = b2i(secp256k1_rfc6979_hmac_sha256_generate(csprng, 32))
         if bi > 0 and bi < ep.o:
             return bi
-    raise ValueError('get_fe_secp256k1 failed')
+    raise ValueError('get_sc_secp256k1 failed')
 
 
-def get_fe_ed25519(csprng):
+def get_sc_ed25519(csprng):
     for i in range(1000):
         bi = b2i(secp256k1_rfc6979_hmac_sha256_generate(csprng, 32))
         if bi > 8 and bi < edf.l:
             return bi
-    raise ValueError('get_fe_ed25519 failed')
+    raise ValueError('get_sc_ed25519 failed')
 
 
-def hash_fe_secp256k1(bytes_in):
+def hash_sc_secp256k1(bytes_in):
     for i in range(1000):
         t = int.from_bytes(bytes_in, byteorder='big')
         if t > 0 and t < ep.o:
             return bytes_in
         bytes_in = hashlib.sha256(bytes_in).digest()
-    raise ValueError('hash_fe_secp256k1 failed')
+    raise ValueError('hash_sc_secp256k1 failed')
 
 
-def hash_fe_ed25519(bytes_in):
+def hash_sc_ed25519(bytes_in):
     for i in range(1000):
         t = int.from_bytes(bytes_in, byteorder='big')
         if t > 9 and t < edf.l:
             return bytes_in
         bytes_in = hashlib.sha256(bytes_in).digest()
-    raise ValueError('hash_fe_ed25519 failed')
+    raise ValueError('hash_sc_ed25519 failed')
 
 
 def proveDLEAG(x, nonce, n=252):
@@ -77,8 +77,8 @@ def proveDLEAG(x, nonce, n=252):
 
     # Set the last r and s so they sum to 0 when weighted by bit position
     for i in range(n - 1):
-        r[i] = get_fe_secp256k1(csprng)
-        s[i] = get_fe_ed25519(csprng)
+        r[i] = get_sc_secp256k1(csprng)
+        s[i] = get_sc_ed25519(csprng)
         sum_r = (sum_r + ((r[i] * (2 ** i)) % ep.o)) % ep.o
         sum_s = (sum_s + ((s[i] * (2 ** i)) % edf.l)) % edf.l
 
@@ -129,8 +129,8 @@ def proveDLEAG(x, nonce, n=252):
     K_h = hashlib.sha256()
 
     for i in range(n):
-        j[i] = get_fe_secp256k1(csprng)
-        k[i] = get_fe_ed25519(csprng)
+        j[i] = get_sc_secp256k1(csprng)
+        k[i] = get_sc_ed25519(csprng)
         J = HG * j[i]
         K = edf.scalarmult(HB, k[i])
         for ii in range(xb[i] + 1, m):
@@ -141,11 +141,11 @@ def proveDLEAG(x, nonce, n=252):
             h.update(struct.pack('>I', i))
             h.update(struct.pack('>I', ii))
             hash_b = h.digest()
-            ej = b2i(hash_fe_secp256k1(hash_b))
-            ek = b2i(hash_fe_ed25519(hash_b))
+            ej = b2i(hash_sc_secp256k1(hash_b))
+            ek = b2i(hash_sc_ed25519(hash_b))
 
-            a[i * 2 + ii] = get_fe_secp256k1(csprng)
-            b[i * 2 + ii] = get_fe_ed25519(csprng)
+            a[i * 2 + ii] = get_sc_secp256k1(csprng)
+            b[i * 2 + ii] = get_sc_ed25519(csprng)
 
             if ii == 0:
                 J = HG * a[i * 2 + ii] - C_G[i] * ej
@@ -161,8 +161,8 @@ def proveDLEAG(x, nonce, n=252):
         J_h.update(pointToCPK(J))
         K_h.update(edu.encodepoint(K))
 
-    J_hb = hash_fe_secp256k1(K_h.digest())
-    K_hb = hash_fe_ed25519(J_h.digest())
+    J_hb = hash_sc_secp256k1(K_h.digest())
+    K_hb = hash_sc_ed25519(J_h.digest())
 
     # Sign loop
     for i in range(n):
@@ -173,12 +173,12 @@ def proveDLEAG(x, nonce, n=252):
         h.update(struct.pack('>I', i))
         h.update(struct.pack('>I', 0))
         hash_b = h.digest()
-        ej = b2i(hash_fe_secp256k1(hash_b))
-        ek = b2i(hash_fe_ed25519(hash_b))
+        ej = b2i(hash_sc_secp256k1(hash_b))
+        ek = b2i(hash_sc_ed25519(hash_b))
 
         for ii in range(0, xb[i]):
-            a[i * 2 + ii] = get_fe_secp256k1(csprng)
-            b[i * 2 + ii] = get_fe_ed25519(csprng)
+            a[i * 2 + ii] = get_sc_secp256k1(csprng)
+            b[i * 2 + ii] = get_sc_ed25519(csprng)
 
             if ii == 0:
                 J = HG * a[i * 2 + ii] - C_G[i] * ej
@@ -198,8 +198,8 @@ def proveDLEAG(x, nonce, n=252):
             h.update(struct.pack('>I', i))
             h.update(struct.pack('>I', ii + 1))
             hash_b = h.digest()
-            ej = b2i(hash_fe_secp256k1(hash_b))
-            ek = b2i(hash_fe_ed25519(hash_b))
+            ej = b2i(hash_sc_secp256k1(hash_b))
+            ek = b2i(hash_sc_ed25519(hash_b))
         # Close the loop
         a[i * 2 + xb[i]] = (j[i] + ((ej * r[i]) % ep.o)) % ep.o
         b[i * 2 + xb[i]] = (k[i] + ((ek * s[i]) % edf.l)) % edf.l
@@ -310,8 +310,8 @@ def verifyDLEAG(proof, n=252):
         h.update(struct.pack('>I', i))
         h.update(struct.pack('>I', 0))
         hash_b = h.digest()
-        ej = b2i(hash_fe_secp256k1(hash_b))
-        ek = b2i(hash_fe_ed25519(hash_b))
+        ej = b2i(hash_sc_secp256k1(hash_b))
+        ek = b2i(hash_sc_ed25519(hash_b))
         for ii in range(0, m):
             if ii == 0:
                 J = HG * a[i * 2 + ii] - C_G[i] * ej
@@ -332,13 +332,13 @@ def verifyDLEAG(proof, n=252):
                 h.update(struct.pack('>I', i))
                 h.update(struct.pack('>I', ii + 1))
                 hash_b = h.digest()
-                ej = b2i(hash_fe_secp256k1(hash_b))
-                ek = b2i(hash_fe_ed25519(hash_b))
+                ej = b2i(hash_sc_secp256k1(hash_b))
+                ek = b2i(hash_sc_ed25519(hash_b))
         J_h.update(pointToCPK(J))
         K_h.update(edu.encodepoint(K))
 
-    J_hbv = hash_fe_secp256k1(K_h.digest())
-    K_hbv = hash_fe_ed25519(J_h.digest())
+    J_hbv = hash_sc_secp256k1(K_h.digest())
+    K_hbv = hash_sc_ed25519(J_h.digest())
 
     if not J_hbv == J_hb:
         return False
