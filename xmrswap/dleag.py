@@ -161,8 +161,8 @@ def proveDLEAG(x, nonce, n=252):
         J_h.update(pointToCPK(J))
         K_h.update(edu.encodepoint(K))
 
-    J_hb = hash_sc_secp256k1(K_h.digest())
-    K_hb = hash_sc_ed25519(J_h.digest())
+    J_hb = J_h.digest()
+    K_hb = K_h.digest()
 
     # Sign loop
     for i in range(n):
@@ -337,8 +337,8 @@ def verifyDLEAG(proof, n=252):
         J_h.update(pointToCPK(J))
         K_h.update(edu.encodepoint(K))
 
-    J_hbv = hash_sc_secp256k1(K_h.digest())
-    K_hbv = hash_sc_ed25519(J_h.digest())
+    J_hbv = J_h.digest()
+    K_hbv = K_h.digest()
 
     if not J_hbv == J_hb:
         return False
