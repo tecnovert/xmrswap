@@ -35,7 +35,9 @@ def get_sc_secp256k1(csprng):
 
 def get_sc_ed25519(csprng):
     for i in range(1000):
-        bi = b2i(secp256k1_rfc6979_hmac_sha256_generate(csprng, 32))
+        b = bytearray(secp256k1_rfc6979_hmac_sha256_generate(csprng, 32))
+        b[0] &= 0x1f  # Clear top 3 bits
+        bi = b2i(b)
         if bi > 8 and bi < edf.l:
             return bi
     raise ValueError('get_sc_ed25519 failed')
@@ -51,11 +53,13 @@ def hash_sc_secp256k1(bytes_in):
 
 
 def hash_sc_ed25519(bytes_in):
+    bytes_in = bytearray(bytes_in)
     for i in range(1000):
+        bytes_in[0] &= 0x1f  # Clear top 3 bits
         t = int.from_bytes(bytes_in, byteorder='big')
         if t > 9 and t < edf.l:
             return bytes_in
-        bytes_in = hashlib.sha256(bytes_in).digest()
+        bytes_in = bytearray(hashlib.sha256(bytes_in).digest())
     raise ValueError('hash_sc_ed25519 failed')
 
 
@@ -147,16 +151,11 @@ def proveDLEAG(x, nonce, n=252):
             a[i * 2 + ii] = get_sc_secp256k1(csprng)
             b[i * 2 + ii] = get_sc_ed25519(csprng)
 
-            if ii == 0:
-                J = HG * a[i * 2 + ii] - C_G[i] * ej
-                K = edf.edwards_sub(
-                    edf.scalarmult(HB, b[i * 2 + ii]),
-                    edf.scalarmult(C_B[i], ek))
-            else:
-                J = HG * a[i * 2 + ii] - (C_G[i] - G) * ej
-                K = edf.edwards_sub(
-                    edf.scalarmult(HB, b[i * 2 + ii]),
-                    edf.scalarmult(edf.edwards_sub(C_B[i], edf.B), ek))
+            # ii == 1:
+            J = HG * a[i * 2 + ii] - (C_G[i] - G) * ej
+            K = edf.edwards_sub(
+                edf.scalarmult(HB, b[i * 2 + ii]),
+                edf.scalarmult(edf.edwards_sub(C_B[i], edf.B), ek))
 
         J_h.update(pointToCPK(J))
         K_h.update(edu.encodepoint(K))
@@ -180,16 +179,11 @@ def proveDLEAG(x, nonce, n=252):
             a[i * 2 + ii] = get_sc_secp256k1(csprng)
             b[i * 2 + ii] = get_sc_ed25519(csprng)
 
-            if ii == 0:
-                J = HG * a[i * 2 + ii] - C_G[i] * ej
-                K = edf.edwards_sub(
-                    edf.scalarmult(HB, b[i * 2 + ii]),
-                    edf.scalarmult(C_B[i], ek))
-            else:
-                J = HG * a[i * 2 + ii] - (C_G[i] - G) * ej
-                K = edf.edwards_sub(
-                    edf.scalarmult(HB, b[i * 2 + ii]),
-                    edf.scalarmult(edf.edwards_sub(C_B[i], edf.B), ek))
+            # ii == 0:
+            J = HG * a[i * 2 + ii] - C_G[i] * ej
+            K = edf.edwards_sub(
+                edf.scalarmult(HB, b[i * 2 + ii]),
+                edf.scalarmult(C_B[i], ek))
 
             h = hashlib.sha256()
             h.update(preimage_hash)
