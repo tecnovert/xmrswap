@@ -148,12 +148,10 @@ def DecSig(skE, ct):
     s = b2i(ct[o: o + 32])
 
     # R2 == G * (b * r)
-    # removing b
+    # Removing b
 
     skEi = inverse_mod(skE, ep.o)
     ssig = (s * skEi) % ep.o
-
-    ssi = inverse_mod(ssig, ep.o)
 
     R2x = R2.x() % ep.o
 
