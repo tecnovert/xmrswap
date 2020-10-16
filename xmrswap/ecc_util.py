@@ -29,6 +29,7 @@ ep = ECCParameters( \
 
 curve_secp256k1 = CurveFp(ep.p, ep.a, ep.b)
 G = Point(curve_secp256k1, ep.Gx, ep.Gy, ep.o)
+SECP256K1_ORDER_HALF = ep.o // 2
 
 
 def ToDER(P):

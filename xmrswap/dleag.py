@@ -10,13 +10,13 @@ import hashlib
 
 import xmrswap.contrib.ed25519_fast as edf
 import xmrswap.ed25519_fast_util as edu
-from .ecc_util import (
-    ep, G, INFINITY,
+from xmrswap.ecc_util import (
+    ep, G, INFINITY, SECP256K1_ORDER_HALF,
     pointToCPK, ToDER, CPKToPoint,
     hashToCurve,
     i2b, b2i, i2h)
-from .contrib.ellipticcurve import inverse_mod
-from .rfc6979 import (
+from xmrswap.contrib.ellipticcurve import inverse_mod
+from xmrswap.rfc6979 import (
     secp256k1_rfc6979_hmac_sha256_initialize,
     secp256k1_rfc6979_hmac_sha256_generate)
 
@@ -63,6 +63,125 @@ def hash_sc_ed25519(bytes_in):
     raise ValueError('hash_sc_ed25519 failed')
 
 
+def nonce_function_rfc6979(key32, msg32, count):
+    keydata = key32 + msg32
+    csprng = secp256k1_rfc6979_hmac_sha256_initialize(keydata)
+    for i in range(count + 1):
+        nonce32 = secp256k1_rfc6979_hmac_sha256_generate(csprng, 32)
+    return nonce32
+
+
+def sign_ecdsa_compact(x, m, gen):
+    nonce_i = None
+    found_nonce = False
+    for i in range(1000):
+        nonce = nonce_function_rfc6979(x, m, i)
+        nonce_i = int.from_bytes(nonce, byteorder='big')
+        if nonce_i > 0 and nonce_i < ep.o:
+            found_nonce = True
+            break
+    assert(found_nonce)
+
+    recid = 1
+    xi = b2i(x)
+    mi = b2i(m) % ep.o
+
+    rp = gen * nonce_i
+    overflow = 1 if rp.x() >= ep.o else 0
+    y_is_odd = rp.y() & 1
+    recid = (overflow << 1) | y_is_odd
+    sigr = rp.x() % ep.o
+
+    n = (sigr * xi) % ep.o
+    n = (n + mi) % ep.o
+    sigs = inverse_mod(nonce_i, ep.o)
+    sigs = (sigs * n) % ep.o
+
+    # Low s
+    high = 0
+    if sigs >= SECP256K1_ORDER_HALF:
+        sigs = ep.o - sigs
+        high = 1
+    recid ^= high
+
+    if sigs < 1 or sigr < 1:
+        raise ValueError('Signature element zero.')
+
+    return bytes((27 + recid,)) + i2b(sigr) + i2b(sigs)
+
+
+def verify_ecdsa_compact(pubkey, sig, m, gen):
+    P = CPKToPoint(pubkey)
+    sigr = b2i(sig[:32])
+    sigs = b2i(sig[32:])
+    mi = b2i(m) % ep.o
+
+    # Reject low s
+    if sigs >= SECP256K1_ORDER_HALF:
+        return False
+
+    sn = inverse_mod(sigs, ep.o)
+    u1 = (sn * mi) % ep.o
+    u2 = (sn * sigr) % ep.o
+    pr = P * u2
+    qr = gen * u1
+    pr = pr + qr
+    if pr == INFINITY:
+        return False
+
+    xp = pr.x() % ep.o
+    return True if sigr == xp else False
+
+
+def sign_eddsa(x, m, gen):
+    xi = b2i(x)
+    if xi < 9 or xi >= edf.l:
+        raise ValueError('Invalid secret key')
+
+    P = edf.scalarmult(gen, xi)
+    az = hashlib.sha512(x[::-1]).digest()
+    h = hashlib.sha512()
+    h.update(az[32:])
+    h.update(m)
+    az = h.digest()
+    nonce = int.from_bytes(az, byteorder='little') % edf.l
+    R = edf.scalarmult(gen, nonce)
+    sigr = edu.encodepoint(R)
+
+    h = hashlib.sha512()
+    h.update(sigr)
+    h.update(edu.encodepoint(P))
+    h.update(m)
+    hram = h.digest()
+
+    mi = int.from_bytes(hram, byteorder='little') % edf.l
+    s = (((mi * xi) % edf.l) + nonce) % edf.l
+
+    return sigr + s.to_bytes(32, byteorder='little')
+
+
+def verify_eddsa(p, sig, m, gen):
+    s = int.from_bytes(sig[32:], byteorder='little')
+    if s < 9 or s >= edf.l:
+        raise ValueError('Invalid s value')
+
+    P = edf.decodepoint(p)
+    check_point_ed25519(P)
+    Pi = edf.edwards_negated(P)
+
+    h = hashlib.sha512()
+    h.update(sig[:32])
+    h.update(p)
+    h.update(m)
+    hram = h.digest()
+    mi = int.from_bytes(hram, byteorder='little') % edf.l
+
+    R = edf.scalarmult(Pi, mi)
+    Q = edf.scalarmult(gen, s)
+    R = edf.edwards_add(R, Q)
+    return True if edu.encodepoint(R) == sig[:32] else False
+
+
 def proveDLEAG(x, nonce, n=252):
     P1 = G * x
     P2 = edf.scalarmult(edf.B, x)
@@ -70,6 +189,11 @@ def proveDLEAG(x, nonce, n=252):
     proof = bytearray()
     proof += pointToCPK(P1)
     proof += edu.encodepoint(P2)
+
+    message = 'dleag message'
+    message_hash = hashlib.sha256(bytes(message, 'utf-8')).digest()
+    proof += sign_ecdsa_compact(i2b(x), message_hash, G)[1:]
+    proof += sign_eddsa(i2b(x), message_hash, edf.B)
 
     csprng = secp256k1_rfc6979_hmac_sha256_initialize(nonce)
 
@@ -230,7 +354,7 @@ def check_point_ed25519(P):
 def verifyDLEAG(proof, n=252):
     m = 2  # Ring members
 
-    if not len(proof) == 65 + 64 + 193 * n:
+    if not len(proof) == 65 + 64 + 64 + 64 + 193 * n:
         raise ValueError('Bad proof size')
 
     # Unpack proof elements:
@@ -239,6 +363,18 @@ def verifyDLEAG(proof, n=252):
     o += 33
     P2 = edf.decodepoint(proof[o:o + 32])
     o += 32
+
+    # Verify points are unblinded
+    message = 'dleag message'
+    message_hash = hashlib.sha256(bytes(message, 'utf-8')).digest()
+    sig_ecdsa = proof[o:o + 64]
+    o += 64
+    sig_eddsa = proof[o:o + 64]
+    o += 64
+    if not verify_ecdsa_compact(proof[0:33], sig_ecdsa, message_hash, G):
+        raise ValueError('Bad ECDSA signature')
+    if not verify_eddsa(proof[33:65], sig_eddsa, message_hash, edf.B):
+        raise ValueError('Bad EdDSA signature')
 
     C_G = [None] * n
     C_B = [None] * n
@@ -360,17 +496,28 @@ def testDLEAG():
     start = time.time()
     proof = proveDLEAG(x, nonce)
     print('proof len', len(proof))
-    print('Took {}', time.time() - start)
+    print('Took {} seconds'.format(time.time() - start))
 
     start = time.time()
     passed = verifyDLEAG(proof)
     print('Proof Valid' if passed else 'Proof Invalid')
-    print('Took {}', time.time() - start)
+    print('Took {} seconds'.format(time.time() - start))
     assert(passed is True)
 
     a = edu.get_secret()
     A = edf.scalarmult(edf.B, a)
     bad_proof = proof[:33] + edu.encodepoint(A) + proof[33 + 32:]
+
+    try:
+        passed = verifyDLEAG(bad_proof)
+        assert(False), 'Verified bad_proof!'
+    except Exception as e:
+        assert(str(e) == 'Bad EdDSA signature')
+
+    # Redo signature
+    message = 'dleag message'
+    message_hash = hashlib.sha256(bytes(message, 'utf-8')).digest()
+    bad_proof = bad_proof[:65 + 64] + sign_eddsa(i2b(a), message_hash, edf.B) + bad_proof[65 + 64 + 64:]
 
     try:
         passed = verifyDLEAG(bad_proof)

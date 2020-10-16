@@ -12,13 +12,11 @@ https://github.com/LLFourn/one-time-VES/blob/master/main.pdf
 
 import hashlib
 from .ecc_util import (
-    ep, G,
+    ep, G, SECP256K1_ORDER_HALF,
     pointToCPK, CPKToPoint,
     getSecretInt,
     i2b, b2i)
 from .contrib.ellipticcurve import inverse_mod
-
-SECP256K1_ORDER_HALF = ep.o // 2
 
 
 def prove_dleq(B1, B2, x):
@@ -160,7 +158,7 @@ def DecSig(skE, ct):
     R2x = R2.x() % ep.o
 
     # Low s
-    if ssig > SECP256K1_ORDER_HALF:
+    if ssig >= SECP256K1_ORDER_HALF:
         ssig = ep.o - ssig
     # Encode in DER format.
     rb = R2x.to_bytes((R2x.bit_length() + 8) // 8, 'big')
@@ -194,7 +192,6 @@ def RecoverEncKey(ct, dersig, pkE):
         raise ValueError('Bad DER encoding.')
 
     # Load r
-
     if dersig[4 + rlen] != 0x02:
         raise ValueError('Bad DER encoding.')
     slen = dersig[5 + rlen]

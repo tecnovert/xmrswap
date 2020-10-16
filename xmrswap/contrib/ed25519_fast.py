@@ -342,3 +342,15 @@ def checkvalid(s, m, pk):
 
 def is_identity(P):
     return True if P[0] == 0 else False
+
+
+def edwards_negated(P):
+    (x, y, z, t) = P
+
+    zi = inv(z)
+    x = q - ((x * zi) % q)
+    y = (y * zi) % q
+    z = 1
+    t = (x * y) % q
+
+    return (x, y, z, t)
