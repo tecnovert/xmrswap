@@ -10,8 +10,7 @@ import unittest
 
 from tests.xmrswap.common import (
     TEST_DATADIRS,
-    callSwapTool
-)
+    callSwapTool)
 
 
 class Test(unittest.TestCase):

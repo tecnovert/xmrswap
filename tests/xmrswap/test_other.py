@@ -26,7 +26,7 @@ class Test(unittest.TestCase):
     def test_script_checker(self):
         testBTCInterface()
 
-    def test_makeInt(self):
+    def test_make_int(self):
         def test_case(vs, vf, expect_int):
             i = make_int(vs)
             assert(i == expect_int and isinstance(i, int))

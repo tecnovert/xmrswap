@@ -66,16 +66,28 @@ class XMRInterface(CoinInterface):
     def sumPubkeys(self, Ka, Kb):
         return edf.edwards_add(Ka, Kb)
 
-    def publishBLockTx(self, Kbv, Kbs, output_amount, feerate):
+    def publishBLockTx(self, Kbv, Kbs, output_amount, feerate, wait_for_sent=True, from_wallet=None):
 
         shared_addr = xmr_util.encode_address(self.encodePubkey(Kbv), self.encodePubkey(Kbs))
+
+        if from_wallet is not None:
+            self.rpc_wallet_cb('open_wallet', {'filename': from_wallet})
 
         # TODO: How to set feerate?
         params = {'destinations': [{'amount': output_amount, 'address': shared_addr}]}
         rv = self.rpc_wallet_cb('transfer', params)
         logging.info('publishBLockTx %s to address_b58 %s', rv['tx_hash'], shared_addr)
 
-        return rv['tx_hash']
+        tx_hash = rv['tx_hash']
+        if wait_for_sent:
+            for i in range(10):
+                rv = self.rpc_wallet_cb('get_transfers', {'out': True, 'pending': True, 'failed': True})
+                logging.info('Waiting for sent transfer %s', rv)
+                if 'pending' not in rv:
+                    break
+                time.sleep(5)
+
+        return tx_hash
 
     def findTxB(self, kbv, Kbs, cb_swap_value, cb_block_confirmed, restore_height):
         Kbv_enc = self.encodePubkey(self.pubkey(kbv))
@@ -100,24 +112,24 @@ class XMRInterface(CoinInterface):
             logging.info('generate_from_keys %s', dumpj(rv))
             rv = self.rpc_wallet_cb('open_wallet', {'filename': address_b58})
 
+        self.rpc_wallet_cb('refresh')
+
         # Debug
         try:
+            wallet_height = self.rpc_wallet_cb('get_height')['height']
             current_height = self.rpc_cb('get_block_count')['count']
-            logging.info('findTxB XMR current_height %d\nAddress: %s', current_height, address_b58)
+            logging.info('findTxB XMR current_height %d, wallet_height %d\nAddress: %s', current_height, wallet_height, address_b58)
         except Exception as e:
             logging.info('rpc_cb failed %s', str(e))
             current_height = None  # If the transfer is available it will be deep enough
 
-        # For a while after opening the wallet rpc cmds return empty data
-        for i in range(5):
-            params = {'transfer_type': 'available'}
-            rv = self.rpc_wallet_cb('incoming_transfers', params)
-            if 'transfers' in rv:
-                for transfer in rv['transfers']:
-                    if transfer['amount'] == cb_swap_value \
-                       and (current_height is None or current_height - transfer['block_height'] > cb_block_confirmed):
-                        return True
-            time.sleep(1 + i)
+        params = {'transfer_type': 'available'}
+        rv = self.rpc_wallet_cb('incoming_transfers', params)
+        if 'transfers' in rv:
+            for transfer in rv['transfers']:
+                if transfer['amount'] == cb_swap_value \
+                   and (current_height is None or current_height - transfer['block_height'] > cb_block_confirmed):
+                    return True
 
         return False
 
@@ -140,10 +152,12 @@ class XMRInterface(CoinInterface):
         self.rpc_wallet_cb('generate_from_keys', params)
 
         self.rpc_wallet_cb('open_wallet', {'filename': address_b58})
+
         # For a while after opening the wallet rpc cmds return empty data
 
         num_tries = 40
         for i in range(num_tries + 1):
+            self.rpc_wallet_cb('refresh')
             try:
                 current_height = self.rpc_cb('get_block_count')['count']
                 print('current_height', current_height)
@@ -210,14 +224,13 @@ class XMRInterface(CoinInterface):
             logging.info('generate_from_keys %s', dumpj(rv))
             self.rpc_wallet_cb('open_wallet', {'filename': wallet_filename})
 
-        # For a while after opening the wallet rpc cmds return empty data
-        for i in range(10):
+        for i in range(5):
+            self.rpc_wallet_cb('refresh')
             rv = self.rpc_wallet_cb('get_balance')
             print('get_balance', rv)
             if rv['balance'] >= cb_swap_value:
                 break
-
-            time.sleep(1 + i)
+            time.sleep(1)
 
         # TODO: need a subfee from output option
         b_fee = b_fee_rate * 10  # Guess

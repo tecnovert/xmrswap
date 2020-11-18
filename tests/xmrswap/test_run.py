@@ -297,16 +297,15 @@ class Test(unittest.TestCase):
 
         logging.info('Alice waits for the scriptless-chain lock tx to confirm.')
 
-        num_tries = 50
+        num_tries = 120
         for i in range(1 + num_tries):
             rv = callSwapTool(ID_ALICE_SWAP, 'confirmblocktx')
-            print('confirmblocktx', rv)
             if rv.strip() == 'True':
                 break
 
             if i >= num_tries:
                 raise ValueError('Timed out waiting for scriptless-chain lock tx to confirm.')
-            time.sleep(1)
+            time.sleep(2)
 
         logging.info('Alice shares the secret value with Bob, allowing the script-chain lock tx to be spent')
         msg5f = callSwapTool(ID_ALICE_SWAP, 'msg5f')
@@ -340,7 +339,7 @@ class Test(unittest.TestCase):
         self.callxmrnodewallet(ID_ALICE_XMR, 'open_wallet', {'filename': 'testwallet'})
 
         logging.info('Waiting for Alice\'s XMR to confirm...')
-        num_tries = 40
+        num_tries = 120
         for i in range(num_tries + 1):
             rv = self.callxmrnodewallet(ID_ALICE_XMR, 'get_balance')
             if rv['balance'] > 0 and rv['blocks_to_unlock'] == 0:
@@ -351,7 +350,7 @@ class Test(unittest.TestCase):
 
             if i >= num_tries:
                 raise ValueError('Balance not confirming on node {}'.format(ID_ALICE_XMR))
-            time.sleep(1)
+            time.sleep(2)
 
         logging.info('Waiting for Bob\'s BTC to confirm...')
         for i in range(num_tries + 1):
@@ -545,7 +544,7 @@ class Test(unittest.TestCase):
 
         logging.info('Alice waits for the scriptless-chain lock tx to confirm.')
 
-        num_tries = 50
+        num_tries = 120
         for i in range(1 + num_tries):
             rv = callSwapTool(ID_ALICE_SWAP, 'confirmblocktx')
             print('confirmblocktx', rv)
@@ -554,7 +553,7 @@ class Test(unittest.TestCase):
 
             if i >= num_tries:
                 raise ValueError('Timed out waiting for scriptless-chain lock tx to confirm.')
-            time.sleep(1)
+            time.sleep(2)
 
         logging.info('Alice detects a problem with the scriptless-chain lock tx and decides to cancel the swap')
 

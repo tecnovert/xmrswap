@@ -206,7 +206,7 @@ def waitForXMRNode(rpc_offset, max_tries=7):
             return
         except Exception as ex:
             if i < max_tries:
-                logging.warning('Can\'t connect to XMR wallet RPC: %s. Retrying in %d second/s.', str(ex), (i + 1))
+                logging.warning('Can\'t connect to XMR RPC: %s. Retrying in %d second/s.', str(ex), (i + 1))
                 time.sleep(i + 1)
     raise ValueError('waitForXMRNode failed')
 
