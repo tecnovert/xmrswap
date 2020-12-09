@@ -12,6 +12,8 @@ from io import BytesIO
 
 import xmrswap.otves_ecdsa as otves
 
+from xmrswap.dleag import sign_ecdsa_compact, verify_ecdsa_compact
+
 from .util import (
     decodeScriptNum,
     getCompactSizeLen,
@@ -127,7 +129,7 @@ class BTCInterface(CoinInterface):
     def sumPubkeys(self, Ka, Kb):
         return Ka + Kb
 
-    def extractScriptLockScriptValues(self, script_bytes):
+    def extractLongScriptLockScriptValues(self, script_bytes):
         script_len = len(script_bytes)
         assert_cond(script_len > 112, 'Bad script length')
         assert_cond(script_bytes[0] == OP_IF)
@@ -175,7 +177,7 @@ class BTCInterface(CoinInterface):
 
         return secret_hash, pk1, pk2, csv_val, pk3, pk4
 
-    def genScriptLockTxScript(self, sh, Kal, Kaf, lock_blocks, Karl, Karf):
+    def genLongScriptLockTxScript(self, sh, Kal, Kaf, lock_blocks, Karl, Karf):
         return CScript([
             CScriptOp(OP_IF),
             CScriptOp(OP_SIZE), 32, CScriptOp(OP_EQUALVERIFY),
@@ -186,9 +188,49 @@ class BTCInterface(CoinInterface):
             2, self.encodePubkey(Karl), self.encodePubkey(Karf), 2, CScriptOp(OP_CHECKMULTISIG),
             CScriptOp(OP_ENDIF)])
 
-    def createScriptLockTx(self, value, sh, Kal, Kaf, lock_blocks, Karl, Karf):
+    def extractScriptLockScriptValues(self, script_bytes):
+        script_len = len(script_bytes)
+        assert_cond(script_len == 145, 'Bad script length')
+        o = 0
+        assert_cond(script_bytes[o] == OP_IF)
+        assert_cond(script_bytes[o + 1] == OP_2)
+        assert_cond(script_bytes[o + 2] == 33)
+        o += 3
+        pk1 = script_bytes[o: o + 33]
+        o += 33
+        assert_cond(script_bytes[o] == 33)
+        o += 1
+        pk2 = script_bytes[o: o + 33]
+        o += 33
+        assert_cond(script_bytes[o] == OP_2)
+        assert_cond(script_bytes[o + 1] == OP_CHECKMULTISIG)
+        assert_cond(script_bytes[o + 2] == OP_ELSE)
+        assert_cond(script_bytes[o + 3] == OP_2)
+        assert_cond(script_bytes[o + 4] == 33)
+        o += 5
+        pk3 = script_bytes[o: o + 33]
+        o += 33
+        assert_cond(script_bytes[o] == 33)
+        o += 1
+        pk4 = script_bytes[o: o + 33]
+        o += 33
+        assert_cond(script_bytes[o] == OP_2)
+        assert_cond(script_bytes[o + 1] == OP_CHECKMULTISIG)
+        assert_cond(script_bytes[o + 2] == OP_ENDIF)
 
-        script = self.genScriptLockTxScript(sh, Kal, Kaf, lock_blocks, Karl, Karf)
+        return pk1, pk2, pk3, pk4
+
+    def genScriptLockTxScript(self, Kal, Kaf, Karl, Karf):
+        return CScript([
+            CScriptOp(OP_IF),
+            2, self.encodePubkey(Kal), self.encodePubkey(Kaf), 2, CScriptOp(OP_CHECKMULTISIG),
+            CScriptOp(OP_ELSE),
+            2, self.encodePubkey(Karl), self.encodePubkey(Karf), 2, CScriptOp(OP_CHECKMULTISIG),
+            CScriptOp(OP_ENDIF)])
+
+    def createScriptLockTx(self, value, Kal, Kaf, Karl, Karf):
+
+        script = self.genScriptLockTxScript(Kal, Kaf, Karl, Karf)
         tx = CTransaction()
         tx.nVersion = self.txVersion()
         tx.vout.append(self.txoType(value, CScript([OP_0, hashlib.sha256(script).digest()])))
@@ -235,7 +277,7 @@ class BTCInterface(CoinInterface):
             self.encodePubkey(Kaf), CScriptOp(OP_CHECKSIG),
             CScriptOp(OP_ENDIF)])
 
-    def createScriptLockRefundTx(self, tx_lock, script_lock, Karl, Karf, csv_val, Kaf, tx_fee_rate):
+    def createScriptLockRefundTx(self, tx_lock, script_lock, Karl, Karf, lock1_value, csv_val, Kaf, tx_fee_rate):
 
         output_script = CScript([OP_0, hashlib.sha256(script_lock).digest()])
         locked_n = findOutput(tx_lock, output_script)
@@ -244,8 +286,6 @@ class BTCInterface(CoinInterface):
 
         tx_lock.rehash()
         tx_lock_hash_int = tx_lock.sha256
-
-        sh, A, B, lock1_value, C, D = self.extractScriptLockScriptValues(script_lock)
 
         refund_script = self.genScriptLockRefundTxScript(Karl, Karf, csv_val, Kaf)
         tx = CTransaction()
@@ -367,7 +407,6 @@ class BTCInterface(CoinInterface):
 
     def verifyLockTx(self, tx, script_out,
                      swap_value,
-                     sh,
                      Kal, Kaf,
                      lock_value, feerate,
                      Karl, Karf,
@@ -393,11 +432,9 @@ class BTCInterface(CoinInterface):
         assert_cond(locked_coin == swap_value, 'Bad locked value')
 
         # Check script and values
-        shv, A, B, csv_val, C, D = self.extractScriptLockScriptValues(script_out)
-        assert_cond(shv == sh, 'Bad hash lock')
+        A, B, C, D = self.extractScriptLockScriptValues(script_out)
         assert_cond(A == self.encodePubkey(Kal), 'Bad script pubkey')
         assert_cond(B == self.encodePubkey(Kaf), 'Bad script pubkey')
-        assert_cond(csv_val == lock_value, 'Bad script csv value')
         assert_cond(C == self.encodePubkey(Karl), 'Bad script pubkey')
         assert_cond(D == self.encodePubkey(Karf), 'Bad script pubkey')
 
@@ -720,31 +757,41 @@ class BTCInterface(CoinInterface):
     def spendBLockTx(self, address_to, kbv, kbs, cb_swap_value, b_fee, restore_height):
         print('TODO: spendBLockTx')
 
+    def signCompact(self, k, message):
+        message_hash = hashlib.sha256(bytes(message, 'utf-8')).digest()
+        return sign_ecdsa_compact(i2b(k), message_hash, G)[1:]
+
+    def verifyCompact(self, K, message, sig):
+        K_enc = self.encodePubkey(K)
+        message_hash = hashlib.sha256(bytes(message, 'utf-8')).digest()
+        rv = verify_ecdsa_compact(K_enc, sig, message_hash, G)
+        assert(rv is True)
+
 
 def testBTCInterface():
     print('testBTCInterface')
     script_bytes = bytes.fromhex('6382012088a820aaf125ff9a34a74c7a17f5e7ee9d07d17cc5e53a539f345d5f73baa7e79b65e28852210224019219ad43c47288c937ae508f26998dd81ec066827773db128fd5e262c04f21039a0fd752bd1a2234820707852e7a30253620052ecd162948a06532a817710b5952ae670114b2755221038689deba25c5578e5457ddadbaf8aeb8badf438dc22f540503dbd4ae10e14f512103c9c5d5acc996216d10852a72cd67c701bfd4b9137a4076350fd32f08db39575552ae68')
     i = BTCInterface(None)
-    sh, a, b, csv_val, c, d = i.extractScriptLockScriptValues(script_bytes)
+    sh, a, b, csv_val, c, d = i.extractLongScriptLockScriptValues(script_bytes)
     assert(csv_val == 20)
 
     script_bytes_t = script_bytes + bytes((0x00,))
     try:
-        sh, a, b, csv_val, c, d = i.extractScriptLockScriptValues(script_bytes_t)
+        sh, a, b, csv_val, c, d = i.extractLongScriptLockScriptValues(script_bytes_t)
         assert(False), 'Should fail'
     except Exception as e:
         assert(str(e) == 'Bad script length')
 
     script_bytes_t = script_bytes[:-1]
     try:
-        sh, a, b, csv_val, c, d = i.extractScriptLockScriptValues(script_bytes_t)
+        sh, a, b, csv_val, c, d = i.extractLongScriptLockScriptValues(script_bytes_t)
         assert(False), 'Should fail'
     except Exception as e:
         assert(str(e) == 'Bad script length')
 
     script_bytes_t = bytes((0x00,)) + script_bytes[1:]
     try:
-        sh, a, b, csv_val, c, d = i.extractScriptLockScriptValues(script_bytes_t)
+        sh, a, b, csv_val, c, d = i.extractLongScriptLockScriptValues(script_bytes_t)
         assert(False), 'Should fail'
     except Exception as e:
         assert(str(e) == 'Bad opcode')
@@ -754,48 +801,48 @@ def testBTCInterface():
     script_part_b = script_bytes[114:]
 
     script_bytes_t = script_part_a + bytes((0x00,)) + script_part_b
-    sh, a, b, csv_val, c, d = i.extractScriptLockScriptValues(script_bytes_t)
+    sh, a, b, csv_val, c, d = i.extractLongScriptLockScriptValues(script_bytes_t)
     assert(csv_val == 0)
 
     script_bytes_t = script_part_a + bytes((OP_16,)) + script_part_b
-    sh, a, b, csv_val, c, d = i.extractScriptLockScriptValues(script_bytes_t)
+    sh, a, b, csv_val, c, d = i.extractLongScriptLockScriptValues(script_bytes_t)
     assert(csv_val == 16)
 
     script_bytes_t = script_part_a + CScriptNum.encode(CScriptNum(17)) + script_part_b
-    sh, a, b, csv_val, c, d = i.extractScriptLockScriptValues(script_bytes_t)
+    sh, a, b, csv_val, c, d = i.extractLongScriptLockScriptValues(script_bytes_t)
     assert(csv_val == 17)
 
     script_bytes_t = script_part_a + CScriptNum.encode(CScriptNum(-15)) + script_part_b
-    sh, a, b, csv_val, c, d = i.extractScriptLockScriptValues(script_bytes_t)
+    sh, a, b, csv_val, c, d = i.extractLongScriptLockScriptValues(script_bytes_t)
     assert(csv_val == -15)
 
     script_bytes_t = script_part_a + CScriptNum.encode(CScriptNum(4000)) + script_part_b
-    sh, a, b, csv_val, c, d = i.extractScriptLockScriptValues(script_bytes_t)
+    sh, a, b, csv_val, c, d = i.extractLongScriptLockScriptValues(script_bytes_t)
     assert(csv_val == 4000)
 
     max_pos = 0x7FFFFFFF
     script_bytes_t = script_part_a + CScriptNum.encode(CScriptNum(max_pos)) + script_part_b
-    sh, a, b, csv_val, c, d = i.extractScriptLockScriptValues(script_bytes_t)
+    sh, a, b, csv_val, c, d = i.extractLongScriptLockScriptValues(script_bytes_t)
     assert(csv_val == max_pos)
     script_bytes_t = script_part_a + CScriptNum.encode(CScriptNum(max_pos - 1)) + script_part_b
-    sh, a, b, csv_val, c, d = i.extractScriptLockScriptValues(script_bytes_t)
+    sh, a, b, csv_val, c, d = i.extractLongScriptLockScriptValues(script_bytes_t)
     assert(csv_val == max_pos - 1)
 
     script_bytes_t = script_part_a + CScriptNum.encode(CScriptNum(max_pos + 1)) + script_part_b
     try:
-        sh, a, b, csv_val, c, d = i.extractScriptLockScriptValues(script_bytes_t)
+        sh, a, b, csv_val, c, d = i.extractLongScriptLockScriptValues(script_bytes_t)
         assert(False), 'Should fail'
     except Exception as e:
         assert(str(e) == 'Bad scriptnum length')
 
     min_neg = -2147483647
     script_bytes_t = script_part_a + CScriptNum.encode(CScriptNum(min_neg)) + script_part_b
-    sh, a, b, csv_val, c, d = i.extractScriptLockScriptValues(script_bytes_t)
+    sh, a, b, csv_val, c, d = i.extractLongScriptLockScriptValues(script_bytes_t)
     assert(csv_val == min_neg)
 
     script_bytes_t = script_part_a + CScriptNum.encode(CScriptNum(min_neg - 1)) + script_part_b
     try:
-        sh, a, b, csv_val, c, d = i.extractScriptLockScriptValues(script_bytes_t)
+        sh, a, b, csv_val, c, d = i.extractLongScriptLockScriptValues(script_bytes_t)
         assert(False), 'Should fail'
     except Exception as e:
         assert(str(e) == 'Bad scriptnum length')

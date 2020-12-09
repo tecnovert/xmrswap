@@ -8,7 +8,6 @@
 import json
 import time
 import struct
-import hashlib
 import logging
 from enum import IntEnum
 
@@ -130,9 +129,6 @@ class SwapInfo:
         self.Kbvl = self.bi.pubkey(self.kbvl)
         self.Kbsl = self.bi.pubkey(self.kbsl)
 
-        self.sv = self.ai.getNewSecretValue()
-        self.sh = hashlib.sha256(self.sv).digest()
-
         # kal and kaf must sign to spend from the coinA lock tx
         # karl and karf must sign to spend from the coinA lock tx refund tx
         self.kal = self.ai.getNewSecretKey()
@@ -175,7 +171,6 @@ class SwapInfo:
         rv += i2b(self.kbvl)
         rv += self.ai.encodePubkey(self.Kal)
         rv += self.ai.encodePubkey(self.Karl)
-        rv += self.sh
 
         if self.b_type == CoinIds.XMR:
             rv += struct.pack('>H', len(self.kbsl_dleag))
@@ -206,9 +201,7 @@ class SwapInfo:
 
         self.a_lock_tx, self.a_lock_tx_script = self.ai.createScriptLockTx(
             self.a_swap_value,
-            self.sh,
             self.Kal, self.Kaf,
-            self.lock_time_1,
             self.Karl, self.Karf,
         )
 
@@ -222,6 +215,7 @@ class SwapInfo:
         self.a_lock_refund_tx, self.a_lock_refund_tx_script, self.a_swap_refund_value = self.ai.createScriptLockRefundTx(
             self.a_lock_tx, self.a_lock_tx_script,
             self.Karl, self.Karf,
+            self.lock_time_1,
             self.lock_time_2,
             self.Kaf,
             self.a_fee_rate
@@ -301,8 +295,10 @@ class SwapInfo:
         rv += struct.pack('>H', len(a_lock_spend_tx_bytes))
         rv += a_lock_spend_tx_bytes
 
-        rv += struct.pack('>H', len(self.al_lock_spend_tx_esig))
-        rv += self.al_lock_spend_tx_esig
+        kal_proof = self.ai.signCompact(self.kal, 'proof key owned for swap')
+        assert(len(kal_proof) == 64)
+        rv += struct.pack('>H', len(kal_proof))
+        rv += kal_proof
         return rv
 
     def packageMSG5F(self):
@@ -310,8 +306,8 @@ class SwapInfo:
         assert(self.swap_leader)
 
         rv = bytes((MsgIds.MSG5F,))
-        rv += struct.pack('>H', len(self.sv))
-        rv += self.sv
+        rv += struct.pack('>H', len(self.al_lock_spend_tx_esig))
+        rv += self.al_lock_spend_tx_esig
         return rv
 
     def processMSG1F(self, msg):
@@ -325,8 +321,6 @@ class SwapInfo:
         o += self.ai.nbK()
         self.Karl = self.ai.decodePubkey(msg[o: o + self.ai.nbK()])
         o += self.ai.nbK()
-        self.sh = msg[o: o + self.ai.nbk()]
-        o += self.ai.nbk()
 
         if self.b_type == CoinIds.XMR:
             length = struct.unpack('>H', msg[o: o + 2])[0]
@@ -431,7 +425,6 @@ class SwapInfo:
         self.a_lock_tx_id, lock_tx_vout = self.ai.verifyLockTx(
             self.a_lock_tx, self.a_lock_tx_script,
             self.a_swap_value,
-            self.sh,
             self.Kal, self.Kaf,
             self.lock_time_1, self.a_fee_rate,
             self.Karl, self.Karf,
@@ -493,30 +486,32 @@ class SwapInfo:
         o += 2
         self.a_lock_spend_tx = self.ai.loadTx(msg[o: o + len_tx])
         o += len_tx
-        len_esig = struct.unpack('>H', msg[o: o + 2])[0]
+        len_sig = struct.unpack('>H', msg[o: o + 2])[0]
         o += 2
-        self.al_lock_spend_tx_esig = msg[o: o + len_esig]
+        self.kal_proof = msg[o: o + 64]
 
         self.ai.verifyLockSpendTx(
             self.a_lock_spend_tx,
             self.a_lock_tx, self.a_lock_tx_script,
             self.a_pkhash_f, self.a_fee_rate)
 
-        v = self.ai.verifyTxOtVES(
-            self.a_lock_spend_tx, self.al_lock_spend_tx_esig,
-            self.Kal, self.Kasf, 0, self.a_lock_tx_script, self.a_swap_value)
-        assert(v)
-        logging.info('Verified leader\'s encrypted signature for the lock spend tx.')
+        self.ai.verifyCompact(self.Kal, 'proof key owned for swap', self.kal_proof)
+        logging.info('Verified leader\'s signature for kal.')
 
     def processMSG5F(self, msg):
         logging.info('%s: processMSG4F', self.desc_self())
         assert(self.swap_follower)
 
         o = 1
-        len_sv = struct.unpack('>H', msg[o: o + 2])[0]
+        len_esig = struct.unpack('>H', msg[o: o + 2])[0]
         o += 2
-        assert(len_sv == 32)
-        self.sv = msg[o: o + len_sv]
+        self.al_lock_spend_tx_esig = msg[o: o + len_esig]
+
+        v = self.ai.verifyTxOtVES(
+            self.a_lock_spend_tx, self.al_lock_spend_tx_esig,
+            self.Kal, self.Kasf, 0, self.a_lock_tx_script, self.a_swap_value)
+        assert(v), 'verify al_lock_spend_tx_esig failed'
+        logging.info('Verified leader\'s encrypted signature for the lock spend tx.')
 
     def processMessage(self, msg):
         if len(msg) < 1:
@@ -609,7 +604,6 @@ class SwapInfo:
             b'',
             self.al_lock_spend_sig,
             self.af_lock_spend_sig,
-            self.sv,
             bytes((1,)),
             self.a_lock_tx_script,
         ]
@@ -785,9 +779,6 @@ class SwapInfo:
         self.putK(jso, self.bi, 'Kbvl')
         self.putK(jso, self.bi, 'Kbsl')
 
-        self.putbytes(jso, 'sv')
-        self.putbytes(jso, 'sh')
-
         self.putk(jso, self.ai, 'kal')
         self.putk(jso, self.ai, 'karl')
         self.putK(jso, self.ai, 'Kal')
@@ -900,9 +891,6 @@ class SwapInfo:
         self.loadk(jsi, self.bi, 'kbsl')
         self.loadK(jsi, self.bi, 'Kbvl')
         self.loadK(jsi, self.bi, 'Kbsl')
-
-        self.loadbytes(jsi, 'sv')
-        self.loadbytes(jsi, 'sh')
 
         self.loadk(jsi, self.ai, 'kal')
         self.loadk(jsi, self.ai, 'karl')

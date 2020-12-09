@@ -13,7 +13,7 @@ Run tests without installing module:
 ```
 export PYTHONPATH=$(pwd)
 export BITCOIN_BINDIR=~/tmp/bitcoin-0.19.0.1/bin;
-export PARTICL_BINDIR=~/tmp/particl-0.19.1.1/bin;
+export PARTICL_BINDIR=~/tmp/particl-0.19.1.2/bin;
 export XMR_BINDIR=~/tmp/monero-x86_64-linux-gnu-v0.17.0.1;
 python setup.py test
 ```
