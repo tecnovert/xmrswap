@@ -232,6 +232,13 @@ class XMRInterface(CoinInterface):
                 break
             time.sleep(1)
 
+        params = {'address': address_to}
+        rv = self.rpc_wallet_cb('sweep_all', params)
+        print('sweep_all', rv)
+
+        return bytes.fromhex(rv['tx_hash_list'][0])
+
+        '''
         # TODO: need a subfee from output option
         b_fee = b_fee_rate * 10  # Guess
 
@@ -250,3 +257,4 @@ class XMRInterface(CoinInterface):
             logging.info('Raising fee to %d', b_fee)
 
         return rv['tx_hash']
+        '''

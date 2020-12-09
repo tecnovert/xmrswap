@@ -146,7 +146,7 @@ class Test(unittest.TestCase):
         logging.info('XMR blocks: %d', rv['count'])
 
         if callnoderpc(0, 'getblockchaininfo')['blocks'] < num_blocks:
-            logging.info('Mining %d bitcoin blocks to %s', num_blocks, self.btc_addr)
+            logging.info('Mining %d Bitcoin blocks to %s', num_blocks, self.btc_addr)
             callnoderpc(0, 'generatetoaddress', [num_blocks, self.btc_addr])
         rv = callnoderpc(0, 'getblockchaininfo')
         logging.info('BTC blocks: %d', rv['blocks'])
