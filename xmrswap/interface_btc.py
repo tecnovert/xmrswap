@@ -197,12 +197,11 @@ class BTCInterface(CoinInterface):
 
     def extractScriptLockScriptValues(self, script_bytes):
         script_len = len(script_bytes)
-        assert_cond(script_len == 145, 'Bad script length')
+        assert_cond(script_len == 71, 'Bad script length')
         o = 0
-        assert_cond(script_bytes[o] == OP_IF)
-        assert_cond(script_bytes[o + 1] == OP_2)
-        assert_cond(script_bytes[o + 2] == 33)
-        o += 3
+        assert_cond(script_bytes[o] == OP_2)
+        assert_cond(script_bytes[o + 1] == 33)
+        o += 2
         pk1 = script_bytes[o: o + 33]
         o += 33
         assert_cond(script_bytes[o] == 33)
@@ -211,33 +210,15 @@ class BTCInterface(CoinInterface):
         o += 33
         assert_cond(script_bytes[o] == OP_2)
         assert_cond(script_bytes[o + 1] == OP_CHECKMULTISIG)
-        assert_cond(script_bytes[o + 2] == OP_ELSE)
-        assert_cond(script_bytes[o + 3] == OP_2)
-        assert_cond(script_bytes[o + 4] == 33)
-        o += 5
-        pk3 = script_bytes[o: o + 33]
-        o += 33
-        assert_cond(script_bytes[o] == 33)
-        o += 1
-        pk4 = script_bytes[o: o + 33]
-        o += 33
-        assert_cond(script_bytes[o] == OP_2)
-        assert_cond(script_bytes[o + 1] == OP_CHECKMULTISIG)
-        assert_cond(script_bytes[o + 2] == OP_ENDIF)
 
-        return pk1, pk2, pk3, pk4
+        return pk1, pk2
 
-    def genScriptLockTxScript(self, Kal, Kaf, Karl, Karf):
+    def genScriptLockTxScript(self, Kal, Kaf):
         return CScript([
-            CScriptOp(OP_IF),
-            2, self.encodePubkey(Kal), self.encodePubkey(Kaf), 2, CScriptOp(OP_CHECKMULTISIG),
-            CScriptOp(OP_ELSE),
-            2, self.encodePubkey(Karl), self.encodePubkey(Karf), 2, CScriptOp(OP_CHECKMULTISIG),
-            CScriptOp(OP_ENDIF)])
+            2, self.encodePubkey(Kal), self.encodePubkey(Kaf), 2, CScriptOp(OP_CHECKMULTISIG)])
 
-    def createScriptLockTx(self, value, Kal, Kaf, Karl, Karf):
-
-        script = self.genScriptLockTxScript(Kal, Kaf, Karl, Karf)
+    def createScriptLockTx(self, value, Kal, Kaf):
+        script = self.genScriptLockTxScript(Kal, Kaf)
         tx = CTransaction()
         tx.nVersion = self.txVersion()
         tx.vout.append(self.txoType(value, CScript([OP_0, hashlib.sha256(script).digest()])))
@@ -284,7 +265,7 @@ class BTCInterface(CoinInterface):
             self.encodePubkey(Kaf), CScriptOp(OP_CHECKSIG),
             CScriptOp(OP_ENDIF)])
 
-    def createScriptLockRefundTx(self, tx_lock, script_lock, Karl, Karf, lock1_value, csv_val, Kaf, tx_fee_rate):
+    def createScriptLockRefundTx(self, tx_lock, script_lock, Kal, Kaf, lock1_value, csv_val, tx_fee_rate):
 
         output_script = CScript([OP_0, hashlib.sha256(script_lock).digest()])
         locked_n = findOutput(tx_lock, output_script)
@@ -294,7 +275,7 @@ class BTCInterface(CoinInterface):
         tx_lock.rehash()
         tx_lock_hash_int = tx_lock.sha256
 
-        refund_script = self.genScriptLockRefundTxScript(Karl, Karf, csv_val, Kaf)
+        refund_script = self.genScriptLockRefundTxScript(Kal, Kaf, csv_val, Kaf)
         tx = CTransaction()
         tx.nVersion = self.txVersion()
         tx.vin.append(CTxIn(COutPoint(tx_lock_hash_int, locked_n), nSequence=lock1_value))
@@ -416,7 +397,6 @@ class BTCInterface(CoinInterface):
                      swap_value,
                      Kal, Kaf,
                      lock_value, feerate,
-                     Karl, Karf,
                      check_lock_tx_inputs):
         # Verify:
         #
@@ -439,11 +419,9 @@ class BTCInterface(CoinInterface):
         assert_cond(locked_coin == swap_value, 'Bad locked value')
 
         # Check script and values
-        A, B, C, D = self.extractScriptLockScriptValues(script_out)
+        A, B = self.extractScriptLockScriptValues(script_out)
         assert_cond(A == self.encodePubkey(Kal), 'Bad script pubkey')
         assert_cond(B == self.encodePubkey(Kaf), 'Bad script pubkey')
-        assert_cond(C == self.encodePubkey(Karl), 'Bad script pubkey')
-        assert_cond(D == self.encodePubkey(Karf), 'Bad script pubkey')
 
         if check_lock_tx_inputs:
             # Check that inputs are unspent and verify fee rate
@@ -483,7 +461,7 @@ class BTCInterface(CoinInterface):
 
     def verifyLockRefundTx(self, tx, script_out,
                            prevout_id, prevout_n, prevout_seq, prevout_script,
-                           Karl, Karf, csv_val_expect, Kaf, swap_value, feerate):
+                           Kal, Kaf, csv_val_expect, swap_value, feerate):
         # Verify:
         #   Must have only one input with correct prevout and sequence
         #   Must have only one output to the p2wsh of the lock refund script
@@ -509,8 +487,8 @@ class BTCInterface(CoinInterface):
 
         # Check script and values
         A, B, csv_val, C = self.extractScriptLockRefundScriptValues(script_out)
-        assert_cond(A == self.encodePubkey(Karl), 'Bad script pubkey')
-        assert_cond(B == self.encodePubkey(Karf), 'Bad script pubkey')
+        assert_cond(A == self.encodePubkey(Kal), 'Bad script pubkey')
+        assert_cond(B == self.encodePubkey(Kaf), 'Bad script pubkey')
         assert_cond(csv_val == csv_val_expect, 'Bad script csv value')
         assert_cond(C == self.encodePubkey(Kaf), 'Bad script pubkey')
 

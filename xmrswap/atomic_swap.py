@@ -129,12 +129,9 @@ class SwapInfo:
         self.Kbvl = self.bi.pubkey(self.kbvl)
         self.Kbsl = self.bi.pubkey(self.kbsl)
 
-        # kal and kaf must sign to spend from the coinA lock tx
-        # karl and karf must sign to spend from the coinA lock tx refund tx
+        # kal and kaf must sign to spend from the coinA lock tx and coinA lock tx refund tx
         self.kal = self.ai.getNewSecretKey()
-        self.karl = self.ai.getNewSecretKey()
         self.Kal = self.ai.pubkey(self.kal)
-        self.Karl = self.ai.pubkey(self.karl)
 
         self.Kasl = self.ai.pubkey(self.kbsl)
 
@@ -155,9 +152,7 @@ class SwapInfo:
         self.Kbsf = self.bi.pubkey(self.kbsf)
 
         self.kaf = self.ai.getNewSecretKey()
-        self.karf = self.ai.getNewSecretKey()
         self.Kaf = self.ai.pubkey(self.kaf)
-        self.Karf = self.ai.pubkey(self.karf)
 
         self.Kasf = self.ai.pubkey(self.kbsf)
 
@@ -170,7 +165,6 @@ class SwapInfo:
         rv = bytes((MsgIds.MSG1F,))
         rv += i2b(self.kbvl)
         rv += self.ai.encodePubkey(self.Kal)
-        rv += self.ai.encodePubkey(self.Karl)
 
         if self.b_type == CoinIds.XMR:
             rv += struct.pack('>H', len(self.kbsl_dleag))
@@ -184,7 +178,6 @@ class SwapInfo:
         rv = bytes((MsgIds.MSG1L,))
         rv += i2b(self.kbvf)
         rv += self.ai.encodePubkey(self.Kaf)
-        rv += self.ai.encodePubkey(self.Karf)
 
         if self.b_type == CoinIds.XMR:
             rv += struct.pack('>H', len(self.kbsf_dleag))
@@ -202,7 +195,6 @@ class SwapInfo:
         self.a_lock_tx, self.a_lock_tx_script = self.ai.createScriptLockTx(
             self.a_swap_value,
             self.Kal, self.Kaf,
-            self.Karl, self.Karf,
         )
 
         self.a_lock_tx = self.ai.fundTx(self.a_lock_tx, self.a_fee_rate)
@@ -214,16 +206,15 @@ class SwapInfo:
 
         self.a_lock_refund_tx, self.a_lock_refund_tx_script, self.a_swap_refund_value = self.ai.createScriptLockRefundTx(
             self.a_lock_tx, self.a_lock_tx_script,
-            self.Karl, self.Karf,
+            self.Kal, self.Kaf,
             self.lock_time_1,
             self.lock_time_2,
-            self.Kaf,
             self.a_fee_rate
         )
 
-        self.al_lock_refund_tx_sig = self.ai.signTx(self.karl, self.a_lock_refund_tx, 0, self.a_lock_tx_script, self.a_swap_value)
+        self.al_lock_refund_tx_sig = self.ai.signTx(self.kal, self.a_lock_refund_tx, 0, self.a_lock_tx_script, self.a_swap_value)
 
-        v = self.ai.verifyTxSig(self.a_lock_refund_tx, self.al_lock_refund_tx_sig, self.Karl, 0, self.a_lock_tx_script, self.a_swap_value)
+        v = self.ai.verifyTxSig(self.a_lock_refund_tx, self.al_lock_refund_tx_sig, self.Kal, 0, self.a_lock_tx_script, self.a_swap_value)
         assert(v)
 
         # The al_lock_refund_spend_tx_script returns the coinA locked coin to the leader
@@ -267,9 +258,9 @@ class SwapInfo:
         logging.info('%s: packageMSG3L', self.desc_self())
         assert(self.swap_follower)
 
-        self.af_lock_refund_spend_tx_esig = self.ai.signTxOtVES(self.karf, self.Kasl, self.a_lock_refund_spend_tx, 0, self.a_lock_refund_tx_script, self.a_swap_refund_value)
+        self.af_lock_refund_spend_tx_esig = self.ai.signTxOtVES(self.kaf, self.Kasl, self.a_lock_refund_spend_tx, 0, self.a_lock_refund_tx_script, self.a_swap_refund_value)
 
-        self.af_lock_refund_tx_sig = self.ai.signTx(self.karf, self.a_lock_refund_tx, 0, self.a_lock_tx_script, self.a_swap_value)
+        self.af_lock_refund_tx_sig = self.ai.signTx(self.kaf, self.a_lock_refund_tx, 0, self.a_lock_tx_script, self.a_swap_value)
 
         rv = bytes((MsgIds.MSG3L,))
         rv += struct.pack('>H', len(self.af_lock_refund_spend_tx_esig))
@@ -319,8 +310,6 @@ class SwapInfo:
         o += self.bi.nbk()
         self.Kal = self.ai.decodePubkey(msg[o: o + self.ai.nbK()])
         o += self.ai.nbK()
-        self.Karl = self.ai.decodePubkey(msg[o: o + self.ai.nbK()])
-        o += self.ai.nbK()
 
         if self.b_type == CoinIds.XMR:
             length = struct.unpack('>H', msg[o: o + 2])[0]
@@ -366,8 +355,6 @@ class SwapInfo:
         self.kbvf = self.bi.decodeKey(msg[o: o + self.bi.nbk()])
         o += self.bi.nbk()
         self.Kaf = self.ai.decodePubkey(msg[o: o + self.ai.nbK()])
-        o += self.ai.nbK()
-        self.Karf = self.ai.decodePubkey(msg[o: o + self.ai.nbK()])
         o += self.ai.nbK()
 
         if self.b_type == CoinIds.XMR:
@@ -449,7 +436,6 @@ class SwapInfo:
             self.a_swap_value,
             self.Kal, self.Kaf,
             self.lock_time_1, self.a_fee_rate,
-            self.Karl, self.Karf,
             self.check_a_lock_tx_inputs
         )
         self.a_lock_tx_dest = self.ai.getScriptDest(self.a_lock_tx_script)
@@ -457,9 +443,8 @@ class SwapInfo:
         lock_refund_tx_id, self.a_swap_refund_value = self.ai.verifyLockRefundTx(
             self.a_lock_refund_tx, self.a_lock_refund_tx_script,
             self.a_lock_tx_id, lock_tx_vout, self.lock_time_1, self.a_lock_tx_script,
-            self.Karl, self.Karf,
+            self.Kal, self.Kaf,
             self.lock_time_2,
-            self.Kaf,
             self.a_swap_value, self.a_fee_rate
         )
 
@@ -471,7 +456,7 @@ class SwapInfo:
         )
 
         logging.info('Checking leader\'s lock refund tx signature')
-        v = self.ai.verifyTxSig(self.a_lock_refund_tx, self.al_lock_refund_tx_sig, self.Karl, 0, self.a_lock_tx_script, self.a_swap_value)
+        v = self.ai.verifyTxSig(self.a_lock_refund_tx, self.al_lock_refund_tx_sig, self.Kal, 0, self.a_lock_tx_script, self.a_swap_value)
         assert(v)
 
     def processMSG3L(self, msg):
@@ -489,13 +474,13 @@ class SwapInfo:
 
         v = self.ai.verifyTxOtVES(
             self.a_lock_refund_spend_tx, self.af_lock_refund_spend_tx_esig,
-            self.Karf, self.Kasl, 0, self.a_lock_refund_tx_script, self.a_swap_refund_value)
+            self.Kaf, self.Kasl, 0, self.a_lock_refund_tx_script, self.a_swap_refund_value)
         assert(v)
         logging.info('Verified follower\'s encrypted signature for the lock refund spend tx.')
 
         v = self.ai.verifyTxSig(
             self.a_lock_refund_tx, self.af_lock_refund_tx_sig,
-            self.Karf, 0, self.a_lock_tx_script, self.a_swap_value)
+            self.Kaf, 0, self.a_lock_tx_script, self.a_swap_value)
         assert(v)
         logging.info('Verified follower\'s signature for the lock refund tx.')
 
@@ -564,7 +549,6 @@ class SwapInfo:
             b'',
             self.al_lock_refund_tx_sig,
             self.af_lock_refund_tx_sig,
-            b'',
             self.a_lock_tx_script,
         ]
 
@@ -626,7 +610,6 @@ class SwapInfo:
             b'',
             self.al_lock_spend_sig,
             self.af_lock_spend_sig,
-            bytes((1,)),
             self.a_lock_tx_script,
         ]
 
@@ -692,10 +675,10 @@ class SwapInfo:
 
         self.af_lock_refund_spend_tx_sig = self.ai.decryptOtVES(self.kbsl, self.af_lock_refund_spend_tx_esig)
 
-        v = self.ai.verifyTxSig(self.a_lock_refund_spend_tx, self.af_lock_refund_spend_tx_sig, self.Karf, 0, self.a_lock_refund_tx_script, self.a_swap_refund_value)
+        v = self.ai.verifyTxSig(self.a_lock_refund_spend_tx, self.af_lock_refund_spend_tx_sig, self.Kaf, 0, self.a_lock_refund_tx_script, self.a_swap_refund_value)
         assert(v)
 
-        self.al_lock_refund_spend_tx_sig = self.ai.signTx(self.karl, self.a_lock_refund_spend_tx, 0, self.a_lock_refund_tx_script, self.a_swap_refund_value)
+        self.al_lock_refund_spend_tx_sig = self.ai.signTx(self.kal, self.a_lock_refund_spend_tx, 0, self.a_lock_refund_tx_script, self.a_swap_refund_value)
 
         witness_stack = [
             b'',
@@ -802,9 +785,7 @@ class SwapInfo:
         self.putK(jso, self.bi, 'Kbsl')
 
         self.putk(jso, self.ai, 'kal')
-        self.putk(jso, self.ai, 'karl')
         self.putK(jso, self.ai, 'Kal')
-        self.putK(jso, self.ai, 'Karl')
         self.putK(jso, self.ai, 'Kasl')
 
         self.putk(jso, self.bi, 'kbvf')
@@ -813,9 +794,7 @@ class SwapInfo:
         self.putK(jso, self.bi, 'Kbsf')
 
         self.putk(jso, self.ai, 'kaf')
-        self.putk(jso, self.ai, 'karf')
         self.putK(jso, self.ai, 'Kaf')
-        self.putK(jso, self.ai, 'Karf')
         self.putK(jso, self.ai, 'Kasf')
 
         self.putbytes(jso, 'kbsl_dleag')
@@ -915,9 +894,7 @@ class SwapInfo:
         self.loadK(jsi, self.bi, 'Kbsl')
 
         self.loadk(jsi, self.ai, 'kal')
-        self.loadk(jsi, self.ai, 'karl')
         self.loadK(jsi, self.ai, 'Kal')
-        self.loadK(jsi, self.ai, 'Karl')
         self.loadK(jsi, self.ai, 'Kasl')
 
         self.loadk(jsi, self.bi, 'kbvf')
@@ -926,9 +903,7 @@ class SwapInfo:
         self.loadK(jsi, self.bi, 'Kbsf')
 
         self.loadk(jsi, self.ai, 'kaf')
-        self.loadk(jsi, self.ai, 'karf')
         self.loadK(jsi, self.ai, 'Kaf')
-        self.loadK(jsi, self.ai, 'Karf')
         self.loadK(jsi, self.ai, 'Kasf')
 
         self.loadbytes(jsi, 'kbsl_dleag')
