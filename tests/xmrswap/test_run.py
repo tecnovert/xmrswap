@@ -46,11 +46,14 @@ ID_BOB_BTC = 2
 
 def run_loop(cls):
     while not cls.stop_nodes:
-        if cls.btc_addr is not None:
-            callnoderpc(0, 'generatetoaddress', [1, cls.btc_addr])
+        try:
+            if cls.btc_addr is not None:
+                callnoderpc(0, 'generatetoaddress', [1, cls.btc_addr])
 
-        if cls.xmr_addr is not None:
-            callrpc_xmr_na(XMR_BASE_RPC_PORT + 0, 'generateblocks', {'wallet_address': cls.xmr_addr, 'amount_of_blocks': 1})
+            if cls.xmr_addr is not None:
+                callrpc_xmr_na(XMR_BASE_RPC_PORT + 0, 'generateblocks', {'wallet_address': cls.xmr_addr, 'amount_of_blocks': 1})
+        except Exception as e:
+            logging.error('Update thread: %s', str(e))
         time.sleep(0.5)
 
 

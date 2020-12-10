@@ -13,6 +13,8 @@ import xmrswap.contrib.ed25519_fast as edf
 
 import xmrswap.xmr_util as xmr_util
 
+from xmrswap.dleag import check_point_ed25519
+
 from .util import (
     dumpj
 )
@@ -54,6 +56,9 @@ class XMRInterface(CoinInterface):
 
     def decodePubkey(self, pke):
         return edf.decodepoint(pke)
+
+    def verifyPubkey(self, pk):
+        check_point_ed25519(pk)
 
     def decodeKey(self, k):
         i = b2i(k)

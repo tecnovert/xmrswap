@@ -12,7 +12,11 @@ from io import BytesIO
 
 import xmrswap.otves_ecdsa as otves
 
-from xmrswap.dleag import sign_ecdsa_compact, verify_ecdsa_compact
+from xmrswap.dleag import (
+    sign_ecdsa_compact,
+    verify_ecdsa_compact,
+    check_point_secp256k1,
+)
 
 from .util import (
     decodeScriptNum,
@@ -117,6 +121,9 @@ class BTCInterface(CoinInterface):
 
     def decodePubkey(self, pke):
         return CPKToPoint(pke)
+
+    def verifyPubkey(self, pk):
+        check_point_secp256k1(pk)
 
     def decodeKey(self, k):
         i = b2i(k)

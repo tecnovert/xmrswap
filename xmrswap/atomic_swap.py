@@ -342,6 +342,17 @@ class SwapInfo:
         self.Kbv = self.bi.pubkey(self.kbv)
         self.Kbs = self.bi.sumPubkeys(self.Kbsl, self.Kbsf)
 
+        self.bi.verifyPubkey(self.Kbsl)
+        self.ai.verifyPubkey(self.Kasl)
+        self.bi.verifyPubkey(self.Kbv)
+
+        if self.bi.encodePubkey(self.Kbsl) == self.bi.encodePubkey(self.Kbsf):
+            raise ValueError('Kbsl == Kbsf')
+        if self.ai.encodePubkey(self.Kasl) == self.ai.encodePubkey(self.Kasf):
+            raise ValueError('Kasl == Kasf')
+        if self.bi.encodePubkey(self.bi.pubkey(self.kbvl)) == self.bi.encodePubkey(self.Kbsl):
+            raise ValueError('Kbvl == Kbsl')
+
         if self.b_type == CoinIds.XMR:
             logging.info('%s: Verifying DLEAG proof for kbsl...', self.desc_self())
             valid = dleag.verifyDLEAG(self.kbsl_dleag)
@@ -378,6 +389,17 @@ class SwapInfo:
         self.kbv = self.bi.sumKeys(self.kbvl, self.kbvf)
         self.Kbv = self.bi.pubkey(self.kbv)
         self.Kbs = self.bi.sumPubkeys(self.Kbsl, self.Kbsf)
+
+        self.bi.verifyPubkey(self.Kbsf)
+        self.ai.verifyPubkey(self.Kasf)
+        self.bi.verifyPubkey(self.Kbv)
+
+        if self.bi.encodePubkey(self.Kbsl) == self.bi.encodePubkey(self.Kbsf):
+            raise ValueError('Kbsl == Kbsf')
+        if self.ai.encodePubkey(self.Kasl) == self.ai.encodePubkey(self.Kasf):
+            raise ValueError('Kasl == Kasf')
+        if self.bi.encodePubkey(self.bi.pubkey(self.kbvf)) == self.bi.encodePubkey(self.Kbsf):
+            raise ValueError('Kbvf == Kbsf')
 
         if self.b_type == CoinIds.XMR:
             logging.info('%s: Verifying DLEAG proof for kbsf...', self.desc_self())

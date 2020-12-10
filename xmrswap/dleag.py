@@ -347,7 +347,7 @@ def check_point_secp256k1(P):
 
 def check_point_ed25519(P):
     if edf.is_identity(P) or \
-       not edf.is_identity(edf.scalarmult(P, edf.l)):
+       not edf.is_identity(edf.scalarmult(P, edf.l)):  # test for small order
         raise ValueError('Invalid ed25519 point')
 
 
